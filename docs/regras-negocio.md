@@ -100,7 +100,19 @@ Aceites, recusas, reatribuições, mudanças de estado, adiamentos, conclusões 
 
 ## 9. Privacidade
 
-Itens privados serão acessíveis ao criador e aos administradores.
+Conforme a seção 13 de `decisoes.md` (Tarefa 08), pendências privadas são acessíveis
+ao criador, ao responsável atribuído e aos administradores do respectivo quadro,
+desde que mantenham participação no quadro. Administradores globais podem lê-las
+independentemente de participação.
+
+Pendências não privadas são acessíveis aos participantes atuais do quadro e aos
+administradores globais. A remoção de participação revoga o acesso do criador,
+responsável e administrador local, preservando autoria e registros existentes.
+Departamento, isoladamente, não autoriza acesso.
+
+Nesta etapa, a API de pendências é somente leitura: não permite INSERT, UPDATE ou
+DELETE, inclusive por administradores globais. Os fluxos de escrita serão definidos
+em tarefas posteriores.
 
 O acesso deverá ser protegido no banco por políticas RLS, não apenas por controles visuais.
 

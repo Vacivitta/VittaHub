@@ -180,3 +180,17 @@ Esta seção prevalece sobre os pontos anteriormente pendentes da seção 11.
 - Autoria imutável e criação atômica do quadro com participação administrativa do criador permanecem preservadas.
 
 A migration inicial permanece não aplicada e é ajustada no mesmo arquivo. Não executar migrations, testes SQL ou comandos remotos nesta tarefa. Não implementar rebaixamento, exclusão de quadros ou outras regras pendentes.
+
+## 13. Decisões aprovadas — Tarefa 08 (25/09/2026)
+
+Esta seção prevalece sobre as formulações anteriores de privacidade. A migration
+inicial já foi aplicada no Supabase local e passou em 159 testes SQL, conforme
+validação informada pelo desenvolvedor. Ela não será modificada. A nova migration
+de pendências é incremental, preparada somente para revisão e ainda não aplicada.
+
+- Pendências não privadas são visíveis aos participantes atuais do quadro e aos administradores globais.
+- Pendências privadas são visíveis ao criador, ao responsável atribuído e aos administradores do respectivo quadro, desde que mantenham participação no quadro. Administradores globais têm acesso independentemente de participação.
+- Remover a participação revoga também a leitura do criador, responsável ou administrador local. Autoria e registros existentes são preservados. Departamento, isoladamente, nunca concede acesso.
+- Nesta etapa, a API terá apenas leitura. INSERT, UPDATE e DELETE ficam bloqueados para usuários da aplicação, inclusive administradores globais autenticados. Não há RPC de escrita de pendências.
+- Criação, atribuição, aceite, recusa, adiamentos, reabertura e movimentação permanecem para tarefas posteriores. Nenhum estado novo ou transição é aprovado nesta entrega.
+- Não aplicar a migration nem executar seus testes SQL antes de nova autorização; não acessar o banco remoto nem alterar o Angular.

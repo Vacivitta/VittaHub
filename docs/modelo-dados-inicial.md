@@ -1,5 +1,10 @@
 # VittaHub — modelo inicial de identidade, quadros e permissões
 
+**Situação atual — Tarefa 08 (25/09/2026):** a fundação foi aplicada localmente e
+validada em 159 testes SQL, conforme informado pelo desenvolvedor. As seções 1–8
+abaixo registram a revisão histórica da fundação. A seção 9 descreve a nova
+migration incremental, ainda não aplicada e com testes ainda não executados.
+
 Atualizado em 24/09/2026, Tarefa 04. **Arquivos para revisão; migration e testes SQL não executados.** VittaHub é o aplicativo da empresa Vacivitta. As decisões aprovadas estão nas seções 11 e 12 de [decisoes.md](decisoes.md), que prevalecem sobre as formulações anteriores. A interface Angular permanece intacta.
 
 ## 1. Escopo e situação
@@ -132,3 +137,67 @@ Build e testes Angular não validam sintaxe ou comportamento SQL. A revisão atu
 - [Supabase: RLS, grants e auth.uid](https://supabase.com/docs/guides/database/postgres/row-level-security).
 - [Supabase: integração de perfis com Auth](https://supabase.com/docs/guides/auth/managing-user-data).
 - A configuração local usa PostgreSQL 17 e schemas de API public/graphql_public. Nenhuma consulta remota foi realizada.
+
+## 9. Pendências: estrutura e leitura — Tarefa 08
+
+Arquivos preparados para revisão:
+- `supabase/migrations/20260925160000_tasks_read_foundation.sql`.
+- `supabase/tests/tasks_read_foundation.test.sql` — 119 asserções pgTAP, não executadas.
+
+A migration inicial aplicada permanece intacta. A incremental adiciona apenas a
+constraint UNIQUE `(board_id, id)` em `board_columns` e a tabela `tasks`:
+
+| Campo | Regra estrutural |
+| --- | --- |
+| id | UUID PK gerado |
+| board_id, column_id | Obrigatórios; FK para quadro e FK composta para coluna do mesmo quadro |
+| title | Obrigatório, não vazio após btrim |
+| description | Texto opcional |
+| created_by | Perfil obrigatório; default auth.uid(); aplicação não pode inserir ou alterar |
+| assignee_id | Um perfil responsável obrigatório |
+| due_at | Instante obrigatório com fuso (timestamptz); prazos vencidos são válidos |
+| business_state | Enum existente, obrigatório, default aguardando_aceite; separado da coluna |
+| is_private | Boolean obrigatório, sem default: classificação explícita |
+| created_at | Auditoria de criação, obrigatório, default now() |
+
+Todas as FKs usam ON DELETE RESTRICT. Não há FK para `board_memberships`: remover
+participantes não bloqueia a operação nem apaga pendências, autoria ou responsável.
+A seleção futura de responsáveis e suas regras de atribuição não são antecipadas
+por uma constraint de participação permanente.
+
+Índices: `(board_id, column_id, created_at, id)` atende à listagem cronológica estável
+por quadro/coluna e às FKs; `(assignee_id, due_at)` prepara a consulta de pendências
+do responsável por prazo; `(created_by)` atende consultas por criador e sua FK.
+Não há índice isolado redundante de quadro ou estado.
+
+RLS habilitada e forçada. Somente `authenticated` recebe SELECT; privilégios de
+PUBLIC/anon/authenticated são revogados antes dessa concessão. A única policy,
+`tasks_select`, reutiliza `is_system_admin`, `can_view_board` e `can_manage_board`
+do schema privado existente. Não cria função SECURITY DEFINER nem RPC adicional.
+
+Leitura não privada exige participação atual no quadro ou administração global.
+Leitura privada exige administração global ou participação atual combinada com
+autoria, responsabilidade ou administração local. A revogação de participação
+vale nas consultas seguintes, preservando os registros. Metadados editáveis do
+Auth e departamento não concedem acesso.
+
+INSERT, UPDATE e DELETE não têm grants nem policies para a aplicação, inclusive
+para administradores globais autenticados. TRUNCATE também não é concedido. O
+default de autoria não substitui validação: quando a criação for implementada,
+a identidade deverá ser fixada no servidor, nunca aceita livremente do frontend.
+As fixtures privilegiadas dos testes não representam uma API de escrita.
+
+Os testes usam identidades sintéticas sem credenciais, BEGIN/ROLLBACK e alternância
+de papéis/JWT, seguindo o padrão existente. Cobrem integridade, enum, campos
+obrigatórios, RLS pública/privada, isolamento, metadados falsificados, bloqueio de
+escrita, remoção/restauração de participantes e preservação da autoria. Também
+verificam a ausência de policies de escrita sob grants hipotéticos, revogados
+no próprio teste. Não foram executados SQL, testes SQL ou acessos remotos nesta tarefa.
+
+### Estruturas e decisões para etapas futuras
+
+- Histórico de eventos imutável com ator obtido da sessão, instantes, valores anteriores/novos e justificativas; ainda não há tabela de eventos nem timestamp de atualização controlada nesta etapa somente leitura.
+- Recusa: registro de justificativa e reatribuição, sem estado `recusado`; definir representação enquanto aguarda reatribuição.
+- Adiamento: solicitação, prazo proposto, decisão e aprovador; regras detalhadas permanecem pendentes.
+- Aceite/reabertura/movimentação: matriz de transições, estado de retorno e justificativas; coluna associada não modifica estado automaticamente nesta migration.
+- Criação e atribuição: definir quem pode criar, selecionar responsável e alterar privacidade, antes de expor qualquer escrita.
