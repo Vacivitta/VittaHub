@@ -1,0 +1,52 @@
+<a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+<aside class="sidebar">
+  <a class="brand" routerLink="/inicio" (click)="menuOpen.set(false)"
+    ><span class="brand-mark" aria-hidden="true">v</span>vacivitta<span class="brand-dot"
+      >.</span
+    ></a
+  >
+  <button
+    class="menu-toggle"
+    type="button"
+    aria-controls="navigation"
+    [attr.aria-expanded]="menuOpen()"
+    (click)="menuOpen.set(!menuOpen())"
+  >
+    {{ menuOpen() ? 'Fechar menu' : 'Abrir menu' }}
+  </button>
+  <div id="navigation" class="navigation" [class.open]="menuOpen()">
+    <p class="nav-label">SEU ESPAÇO</p>
+    <nav aria-label="Navegação principal">
+      @for (link of links; track link.path) {
+        <a
+          [routerLink]="link.path"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+          (click)="menuOpen.set(false)"
+          ><span class="nav-icon" aria-hidden="true">{{ link.icon }}</span
+          >{{ link.label }}</a
+        >
+      }
+    </nav>
+    <div class="sidebar-note">
+      <span aria-hidden="true">✧</span><strong>Juntos, no mesmo ritmo.</strong>
+      <p>Mais clareza para organizar.<br />Mais tempo para cuidar.</p>
+    </div>
+    <a class="exit-link" routerLink="/login" (click)="menuOpen.set(false)"
+      >↪ Voltar à tela de login</a
+    >
+  </div>
+</aside>
+<div class="workspace">
+  <header class="topbar">
+    <span>VittaHub <span class="muted">/ Workspace</span></span>
+    <div class="row">
+      <span class="demo-pill">Demonstração</span
+      ><span class="avatar" aria-label="Pessoa Teste">PD</span>
+    </div>
+  </header>
+  <main id="conteudo" tabindex="-1"><router-outlet /></main>
+  <footer class="workspace-footer">
+    Ambiente demonstrativo · Dados fictícios · Sem persistência
+  </footer>
+</div>

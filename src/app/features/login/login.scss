@@ -1,0 +1,58 @@
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  background: #fff;
+}
+.login-story {
+  background: #e7f0e9;
+  padding: 54px 10%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 70px;
+  color: var(--green);
+}
+.login-story h1 {
+  font-size: clamp(30px, 3.8vw, 56px);
+  line-height: 1.18;
+  letter-spacing: -0.045em;
+}
+.login-story p {
+  max-width: 360px;
+  line-height: 1.8;
+}
+.login-form {
+  align-self: center;
+  width: min(420px, calc(100% - 48px));
+  margin: 50px auto;
+  padding: 0;
+  border: 0;
+}
+.login-form h2 {
+  font-size: 28px;
+  margin-top: 25px;
+}
+.login-form label {
+  margin-top: 22px;
+}
+.login-form .button {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0;
+}
+@media (max-width: 720px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+  .login-story {
+    padding: 28px;
+    gap: 28px;
+  }
+  .login-story h1 {
+    font-size: 32px;
+  }
+  .login-story > .small {
+    display: none;
+  }
+}

@@ -1,0 +1,65 @@
+<app-page-heading
+  title="Olá, Pessoa Teste"
+  description="Um olhar sobre o seu dia e o que a equipe está construindo."
+  eyebrow="Bem-Vindo À VittaHub"
+  ><span class="date-label"
+    >{{ date }}<small>Data de referência da demonstração</small></span
+  ></app-page-heading
+>
+<section class="welcome-banner">
+  <div>
+    <span class="eyebrow">CUIDAR COMEÇA COM ORGANIZAR</span>
+    <h2>Seu trabalho, mais conectado.</h2>
+    <p>Acompanhe suas pendências e encontre a equipe em um só lugar.</p>
+    <a class="button light" routerLink="/minhas-pendencias"
+      >Ver minhas pendências <span aria-hidden="true">↗</span></a
+    >
+  </div>
+  <div class="banner-art" aria-hidden="true"><span>✓</span><span>✧</span><span>✓</span></div>
+</section>
+<section class="stats-grid" aria-label="Resumo das minhas pendências">
+  @for (stat of stats; track stat.label) {
+    <article class="stat-card">
+      <span class="stat-dot" [class]="'stat-dot ' + stat.tone" aria-hidden="true"></span>
+      <p>{{ stat.label }}</p>
+      <strong>{{ stat.value }}</strong
+      ><small>{{ stat.detail }}</small>
+    </article>
+  }
+</section>
+<div class="dashboard-grid">
+  <section>
+    <div class="section-heading">
+      <h2>Em foco</h2>
+      <a routerLink="/minhas-pendencias">Ver todas →</a>
+    </div>
+    <div class="task-list">
+      @for (task of upcoming; track task.id) {
+        <app-task-card [task]="task" />
+      }
+    </div>
+  </section>
+  <section>
+    <div class="section-heading">
+      <h2>Seus quadros</h2>
+      <a routerLink="/quadros">Explorar →</a>
+    </div>
+    <div class="panel board-shortcuts">
+      @for (board of boards; track board.id) {
+        <a [routerLink]="['/quadros', board.id]"
+          ><span class="board-icon" aria-hidden="true">▦</span
+          ><span
+            ><strong>{{ board.title }}</strong
+            ><small>{{ board.area }}</small></span
+          ><span aria-hidden="true">↗</span></a
+        >
+      }
+    </div>
+    <div class="chat-callout">
+      <span class="eyebrow">CONVERSAS QUE APROXIMAM</span>
+      <h3>Um espaço para alinhar ideias.</h3>
+      <p>Veja as conversas de exemplo da equipe.</p>
+      <a routerLink="/chat">Ir para o chat →</a>
+    </div>
+  </section>
+</div>

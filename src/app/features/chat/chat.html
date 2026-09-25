@@ -1,0 +1,63 @@
+<app-page-heading title="Chat" description="Conversas que mantêm a equipe conectada." />
+<div class="chat-layout panel">
+  <aside class="conversation-list" aria-label="Conversas">
+    <h2>Conversas VittaHub</h2>
+    <label class="search-field"
+      ><span class="sr-only">Buscar conversa</span
+      ><input
+        type="search"
+        placeholder="Buscar conversa"
+        [value]="query()"
+        (input)="query.set($any($event.target).value)"
+    /></label>
+    <div class="conversation-buttons">
+      @for (conversation of filtered(); track conversation.id) {
+        <button
+          type="button"
+          class="conversation"
+          [class.selected]="selected().id === conversation.id"
+          [attr.aria-pressed]="selected().id === conversation.id"
+          (click)="selected.set(conversation)"
+        >
+          <span class="avatar">{{ conversation.initials }}</span
+          ><span
+            ><strong>{{ conversation.name }}</strong
+            ><small>{{ conversation.messages[conversation.messages.length - 1].text }}</small></span
+          >
+        </button>
+      } @empty {
+        <p class="note" role="status">Nenhuma conversa encontrada.</p>
+      }
+    </div>
+  </aside>
+  <section class="message-panel" aria-label="Conversa selecionada">
+    <header class="conversation-header">
+      <span class="avatar">{{ selected().initials }}</span>
+      <div>
+        <h2>{{ selected().name }}</h2>
+        <p class="small muted">{{ selected().description }}</p>
+      </div>
+    </header>
+    <div class="messages" aria-live="polite">
+      <p class="message-date">24 de setembro de 2026 · Exemplo</p>
+      @for (message of selected().messages; track $index) {
+        <article class="message" [class.own]="message.own">
+          <span class="message-author">{{ message.author }}</span>
+          <p>{{ message.text }}</p>
+          <time>{{ message.time }}</time>
+        </article>
+      }
+    </div>
+    <div class="composer">
+      <label for="demo-message">Mensagem de demonstração</label>
+      <div class="row">
+        <input
+          id="demo-message"
+          placeholder="Envio disponível em uma próxima etapa"
+          disabled
+        /><button type="button" disabled>Enviar</button>
+      </div>
+      <p class="small muted">Mensagens fictícias, somente para visualização.</p>
+    </div>
+  </section>
+</div>
