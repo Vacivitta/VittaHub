@@ -32,21 +32,25 @@
       <span aria-hidden="true">✧</span><strong>Juntos, no mesmo ritmo.</strong>
       <p>Mais clareza para organizar.<br />Mais tempo para cuidar.</p>
     </div>
-    <a class="exit-link" routerLink="/login" (click)="menuOpen.set(false)"
-      >↪ Voltar à tela de login</a
-    >
+    <button class="exit-link" type="button" (click)="logout()" [disabled]="signingOut()">
+      {{ signingOut() ? 'Saindo…' : '↪ Sair' }}
+    </button>
+    @if (logoutError()) { <p role="alert">{{ logoutError() }}</p> }
   </div>
 </aside>
 <div class="workspace">
   <header class="topbar">
     <span>VittaHub <span class="muted">/ Workspace</span></span>
     <div class="row">
-      <span class="demo-pill">Demonstração</span
-      ><span class="avatar" aria-label="Pessoa Teste">PD</span>
+      <span>{{ auth.displayName() }}</span>
+      <span class="avatar" aria-hidden="true">{{ auth.displayName().slice(0, 2).toUpperCase() }}</span>
     </div>
   </header>
-  <main id="conteudo" tabindex="-1"><router-outlet /></main>
+  <main id="conteudo" tabindex="-1">
+    @if (auth.profileError()) { <p role="alert">{{ auth.profileError() }}</p> }
+    <router-outlet />
+  </main>
   <footer class="workspace-footer">
-    Ambiente demonstrativo · Dados fictícios · Sem persistência
+    Ambiente local · Autenticação real · Demais dados demonstrativos
   </footer>
 </div>

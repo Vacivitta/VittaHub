@@ -3,18 +3,33 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
 import { routes } from './app.routes';
+import { signal } from '@angular/core';
+import { AuthService } from './core/auth/auth.service';
 
 describe('Vacivitta interface', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ imports: [App], providers: [provideRouter(routes)] }),
-  );
+  const session = signal<object | null>({ user: { id: 'test-user' } });
+  const auth = {
+    session,
+    ready: Promise.resolve(),
+    displayName: signal('Conta Local'),
+    profileError: signal(''),
+    signOut: vi.fn(),
+  };
+  beforeEach(() => {
+    session.set({ user: { id: 'test-user' } });
+    auth.ready = Promise.resolve();
+    auth.signOut.mockReset().mockResolvedValue(undefined);
+    TestBed.configureTestingModule({ imports: [App], providers: [
+      provideRouter(routes), { provide: AuthService, useValue: auth },
+    ] });
+  });
 
   it('creates the application', () => {
     expect(TestBed.createComponent(App).componentInstance).toBeTruthy();
   });
 
   it.each([
-    ['/inicio', 'Olá, Pessoa Demo'],
+    ['/inicio', 'Olá, Pessoa Teste'],
     ['/quadros', 'Quadros'],
     ['/quadros/rotina', 'Rotina da equipe'],
     ['/minhas-pendencias', 'Minhas Pendências'],
@@ -33,12 +48,49 @@ describe('Vacivitta interface', () => {
     expect(TestBed.inject(Router).url).toBe('/inicio');
   });
 
-  it('opens the demo from login without credentials', async () => {
+  it('does not offer a demonstration bypass on login', async () => {
+    session.set(null);
     const harness = await RouterTestingHarness.create('/login');
-    expect(harness.routeNativeElement?.querySelector('input')?.readOnly).toBe(true);
-    (harness.routeNativeElement?.querySelector('.button') as HTMLAnchorElement).click();
+    expect(harness.routeNativeElement?.querySelector('input')?.readOnly).toBe(false);
+    (harness.routeNativeElement?.querySelector('.button') as HTMLButtonElement).click();
     await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(harness.routeNativeElement?.querySelector('a[href="/inicio"]')).toBeNull();
+  });
+
+  it.each(['/', '/inicio', '/quadros', '/quadros/rotina', '/minhas-pendencias', '/chat', '/administracao', '/endereco-inexistente'])
+  ('protects %s without a session', async (url) => {
+    session.set(null);
+    const harness = await RouterTestingHarness.create(url);
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(harness.routeNativeElement?.querySelector('.workspace')).toBeNull();
+  });
+
+  it('waits for session restoration before admitting the user', async () => {
+    session.set(null);
+    let restore!: () => void;
+    auth.ready = new Promise<void>((resolve) => { restore = resolve; });
+    const pending = RouterTestingHarness.create('/inicio');
+    expect(TestBed.inject(Router).url).not.toBe('/inicio');
+    session.set({ user: { id: 'test-user' } });
+    restore();
+    await pending;
     expect(TestBed.inject(Router).url).toBe('/inicio');
+  });
+
+  it('protects child navigation when the shell is already active', async () => {
+    const harness = await RouterTestingHarness.create('/inicio');
+    session.set(null);
+    await harness.navigateByUrl('/quadros');
+    expect(TestBed.inject(Router).url).toBe('/login');
+  });
+
+  it('shows the real profile name and invokes logout from the layout', async () => {
+    const harness = await RouterTestingHarness.create('/inicio');
+    expect(harness.routeNativeElement?.querySelector('.topbar')?.textContent).toContain('Conta Local');
+    (harness.routeNativeElement?.querySelector('.exit-link') as HTMLButtonElement).click();
+    await harness.fixture.whenStable();
+    expect(auth.signOut).toHaveBeenCalledOnce();
   });
 
   it('filters boards and shows an empty result', async () => {
