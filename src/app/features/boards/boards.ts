@@ -2,8 +2,9 @@ import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angula
 import { PageHeading } from '../../shared/page-heading';
 import { BoardSummary } from './board-summary';
 import { BoardsService } from './boards.service';
+import { RouterLink } from '@angular/router';
 @Component({
-  imports: [PageHeading],
+  imports: [PageHeading, RouterLink],
   template: `
     <app-page-heading
       title="Quadros"
@@ -32,7 +33,7 @@ import { BoardsService } from './boards.service';
     } @else {
       <div class="boards-grid">
       @for (board of filtered(); track board.id) {
-        <article class="board-tile panel">
+        <a class="board-tile panel" [routerLink]="['/quadros', board.id]">
           <div class="board-cover">
             <span aria-hidden="true">▦</span><span class="small">{{ board.department?.name || 'Departamento indisponível' }}</span>
           </div>
@@ -41,9 +42,10 @@ import { BoardsService } from './boards.service';
             <p class="muted">{{ board.description || 'Sem descrição.' }}</p>
             <div class="row">
               <span class="small muted">Somente leitura</span>
+              <span class="text-link">Abrir quadro ↗</span>
             </div>
           </div>
-        </article>
+        </a>
       } @empty {
         <div class="panel empty">
           @if (boards().length === 0) {
@@ -59,7 +61,7 @@ import { BoardsService } from './boards.service';
       </div>
     }
     <p class="note">
-      Abertura de detalhes, criação e edição de quadros estarão disponíveis em uma próxima etapa.
+      Criação e edição de quadros estarão disponíveis em uma próxima etapa.
     </p>
   `,
 })

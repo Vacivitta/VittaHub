@@ -22,9 +22,14 @@ describe('Vacivitta interface', () => {
     auth.signOut.mockReset().mockResolvedValue(undefined);
     TestBed.configureTestingModule({ imports: [App], providers: [
       provideRouter(routes), { provide: AuthService, useValue: auth },
-      { provide: BoardsService, useValue: { list: vi.fn().mockResolvedValue([
-        { id: 'test-board', title: 'Quadro local', description: null, department: { name: 'Equipe local' } },
-      ]) } },
+      { provide: BoardsService, useValue: {
+        list: vi.fn().mockResolvedValue([
+          { id: '11111111-1111-4111-8111-111111111111', title: 'Quadro local', description: null, department: { name: 'Equipe local' } },
+        ]),
+        getById: vi.fn().mockImplementation(async (id: string) => id === '11111111-1111-4111-8111-111111111111'
+          ? { status: 'loaded', board: { id, title: 'Quadro local', description: null, department: null, columns: [] } }
+          : { status: 'unavailable' }),
+      } },
     ] });
   });
 
@@ -35,7 +40,7 @@ describe('Vacivitta interface', () => {
   it.each([
     ['/inicio', 'Olá, Pessoa Teste'],
     ['/quadros', 'Quadros'],
-    ['/quadros/rotina', 'Rotina da equipe'],
+    ['/quadros/11111111-1111-4111-8111-111111111111', 'Quadro local'],
     ['/minhas-pendencias', 'Minhas Pendências'],
     ['/chat', 'Chat'],
     ['/administracao', 'Administração'],
@@ -43,6 +48,8 @@ describe('Vacivitta interface', () => {
     ['/quadros/inexistente', 'Quadro não encontrado'],
   ])('renders %s', async (url, heading) => {
     const harness = await RouterTestingHarness.create(url);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(heading);
     expect(harness.routeNativeElement?.querySelectorAll('nav a').length).toBe(5);
   });
@@ -105,6 +112,17 @@ describe('Vacivitta interface', () => {
     await harness.fixture.whenStable();
     expect(harness.routeNativeElement?.textContent).toContain('Nenhum quadro encontrado');
     expect(harness.routeNativeElement?.querySelectorAll('.board-tile').length).toBe(0);
+  });
+
+  it('opens a real board ID from the listing', async () => {
+    const harness = await RouterTestingHarness.create('/quadros');
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    (harness.routeNativeElement?.querySelector('.board-tile') as HTMLAnchorElement).click();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(TestBed.inject(Router).url).toBe('/quadros/11111111-1111-4111-8111-111111111111');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain('Quadro local');
   });
 
   it('filters only the demo user tasks by state', async () => {

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { BoardSummary } from './board-summary';
 import { Boards } from './boards';
 import { BoardsService } from './boards.service';
@@ -13,6 +14,7 @@ describe('Boards', () => {
   beforeEach(() => {
     list.mockReset().mockResolvedValue(boards);
     TestBed.configureTestingModule({ imports: [Boards], providers: [
+      provideRouter([]),
       { provide: BoardsService, useValue: { list } },
     ] });
   });
@@ -39,7 +41,7 @@ describe('Boards', () => {
     expect(fixture.nativeElement.querySelectorAll('.board-tile').length).toBe(2);
   });
 
-  it('renders returned data and fallbacks without demo counts or links', async () => {
+  it('renders returned data and links using each board ID without demo counts', async () => {
     const fixture = await render();
     const element = fixture.nativeElement as HTMLElement;
     expect(list).toHaveBeenCalledOnce();
@@ -48,7 +50,7 @@ describe('Boards', () => {
       expect(element.textContent).toContain(text);
     }
     expect(element.textContent).not.toContain('cards fictícios');
-    expect(element.querySelector('a')).toBeNull();
+    expect(element.querySelector('a')?.getAttribute('href')).toBe('/quadros/board-1');
   });
 
   it('shows no available boards without suggesting a search will grant access', async () => {
