@@ -1,59 +1,65 @@
-# VacivittaApp
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.0.
+# VittaHub
 
-## Development server
+Aplicativo interno da Vacivitta para centralizar a organização de demandas e as conversas da equipe, combinando funcionalidades inspiradas no Trello e no Slack.
 
-To start a local development server, run:
+## Tecnologias
 
-```bash
-ng serve
-```
+- Angular 22 e TypeScript
+- Supabase (PostgreSQL, autenticação e Realtime)
+- Docker para o ambiente local do Supabase
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+## Executar o projeto localmente
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Instale as dependências:
 
 ```bash
-ng generate component component-name
+npm install
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+Inicie a aplicação Angular:
 
 ```bash
-ng generate --help
+npm start
 ```
 
-## Building
+Acesse http://localhost:4200/.
 
-To build the project run:
+Para iniciar o ambiente local do Supabase, execute em outro terminal:
 
 ```bash
-ng build
+npx supabase start
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+## Validação
 
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+Compilar a aplicação:
 
 ```bash
-ng test
+npm run build
 ```
 
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
+Executar os testes Angular:
 
 ```bash
-ng e2e
+npm test -- --watch=false
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+Executar os testes SQL no Supabase local:
 
-## Additional Resources
+```bash
+npx supabase test db --local
+```
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+## Documentação
+
+- `docs/escopo-mvp.md` — escopo da primeira versão.
+- `docs/regras-negocio.md` — regras de negócio.
+- `docs/decisoes.md` — decisões técnicas e funcionais.
+- `docs/modelo-dados-inicial.md` — modelagem inicial do banco.
+- `docs/provisionamento-inicial.md` — procedimento de cadastro inicial.
+- `AGENTS.md` — orientações para os agentes de desenvolvimento.
+
+## Estado do projeto
+
+Em desenvolvimento. A interface inicial utiliza dados demonstrativos, e a integração completa com o banco de dados ainda está em andamento.
