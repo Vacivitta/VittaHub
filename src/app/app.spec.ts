@@ -5,6 +5,7 @@ import { App } from './app';
 import { routes } from './app.routes';
 import { signal } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
+import { BoardsService } from './features/boards/boards.service';
 
 describe('Vacivitta interface', () => {
   const session = signal<object | null>({ user: { id: 'test-user' } });
@@ -21,6 +22,9 @@ describe('Vacivitta interface', () => {
     auth.signOut.mockReset().mockResolvedValue(undefined);
     TestBed.configureTestingModule({ imports: [App], providers: [
       provideRouter(routes), { provide: AuthService, useValue: auth },
+      { provide: BoardsService, useValue: { list: vi.fn().mockResolvedValue([
+        { id: 'test-board', title: 'Quadro local', description: null, department: { name: 'Equipe local' } },
+      ]) } },
     ] });
   });
 

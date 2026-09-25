@@ -1,9 +1,9 @@
-import { Component, computed, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
-import { BOARDS, TASKS } from '../../core/demo-data';
+import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { PageHeading } from '../../shared/page-heading';
+import { BoardSummary } from './board-summary';
+import { BoardsService } from './boards.service';
 @Component({
-  imports: [RouterLink, PageHeading],
+  imports: [PageHeading],
   template: `
     <app-page-heading
       title="Quadros"
@@ -14,49 +14,84 @@ import { PageHeading } from '../../shared/page-heading';
         >Buscar quadro<input
           type="search"
           placeholder="Digite o nome de um quadro"
+          [disabled]="loading() || !!error()"
           [value]="query()"
           (input)="query.set($any($event.target).value)" /></label
-      ><span class="muted small" aria-live="polite"
-        >{{ filtered().length }} quadros de demonstração</span
       >
+      @if (!loading() && !error()) {
+        <span class="muted small" aria-live="polite">{{ filtered().length }} quadros disponíveis</span>
+      }
     </div>
-    <div class="boards-grid">
+    @if (loading()) {
+      <div class="panel empty" role="status">Carregando quadros…</div>
+    } @else if (error()) {
+      <div class="panel empty">
+        <p role="alert">{{ error() }}</p>
+        <button type="button" (click)="load()">Tentar novamente</button>
+      </div>
+    } @else {
+      <div class="boards-grid">
       @for (board of filtered(); track board.id) {
-        <a class="board-tile panel" [routerLink]="['/quadros', board.id]"
-          ><div class="board-cover" [class]="'board-cover ' + board.id">
-            <span aria-hidden="true">▦</span><span class="small">{{ board.area }}</span>
+        <article class="board-tile panel">
+          <div class="board-cover">
+            <span aria-hidden="true">▦</span><span class="small">{{ board.department?.name || 'Departamento indisponível' }}</span>
           </div>
           <div class="board-body">
             <h2>{{ board.title }}</h2>
-            <p class="muted">{{ board.description }}</p>
+            <p class="muted">{{ board.description || 'Sem descrição.' }}</p>
             <div class="row">
-              <span class="small muted">{{ count(board.id) }} cards fictícios</span
-              ><span class="text-link">Abrir quadro ↗</span>
+              <span class="small muted">Somente leitura</span>
             </div>
-          </div></a
-        >
+          </div>
+        </article>
       } @empty {
         <div class="panel empty">
-          <h2>Nenhum quadro encontrado</h2>
-          <p>Tente outro nome.</p>
-          <button type="button" (click)="query.set('')">Limpar busca</button>
+          @if (boards().length === 0) {
+            <h2>Nenhum quadro disponível</h2>
+            <p>Não há quadros disponíveis para sua conta.</p>
+          } @else {
+            <h2>Nenhum quadro encontrado</h2>
+            <p>Tente outro nome.</p>
+            <button type="button" (click)="query.set('')">Limpar busca</button>
+          }
         </div>
       }
-    </div>
+      </div>
+    }
     <p class="note">
-      Visualização demonstrativa. Criação e edição de quadros estarão disponíveis em uma próxima
-      etapa.
+      Abertura de detalhes, criação e edição de quadros estarão disponíveis em uma próxima etapa.
     </p>
   `,
 })
-export class Boards {
+export class Boards implements OnInit {
+  private readonly service = inject(BoardsService);
+  private readonly destroyRef = inject(DestroyRef);
+  readonly boards = signal<BoardSummary[]>([]);
+  readonly loading = signal(true);
+  readonly error = signal('');
   readonly query = signal('');
   readonly filtered = computed(() =>
-    BOARDS.filter((b) =>
+    this.boards().filter((b) =>
       b.title.toLocaleLowerCase('pt-BR').includes(this.query().trim().toLocaleLowerCase('pt-BR')),
     ),
   );
-  count(id: string) {
-    return TASKS.filter((t) => t.boardId === id).length;
+  ngOnInit(): void {
+    void this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
+    this.boards.set([]);
+    try {
+      const boards = await this.service.list();
+      if (!this.destroyRef.destroyed) this.boards.set(boards);
+    } catch {
+      if (!this.destroyRef.destroyed) {
+        this.error.set('Não foi possível carregar os quadros. Tente novamente.');
+      }
+    } finally {
+      if (!this.destroyRef.destroyed) this.loading.set(false);
+    }
   }
 }
