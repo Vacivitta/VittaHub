@@ -42,7 +42,9 @@ insert into public.boards (id, title, department_id, created_by) values
 insert into public.board_columns (id, board_id, title, position) values
  ('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'Organizacional', 0),
  ('40000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000002', 'Entrada', 0);
-select is((select count(*)::integer from public.board_memberships where is_board_admin), 2, 'creator trigger provisions both administrators');
+select is((select count(*)::integer from public.board_memberships where is_board_admin
+ and board_id in ('30000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002')),
+ 2, 'creator trigger provisions both administrators');
 select throws_ok($$insert into public.profiles (id, role) values ('10000000-0000-4000-8000-000000000006','membro')$$,
  '23502', null::text, 'profile requires primary department');
 select throws_ok($$insert into public.profiles (id, department_id, role) values
@@ -106,9 +108,15 @@ select throws_ok($$select public.create_board('Gestor denied','20000000-0000-400
 
 -- System administrator: global visibility, explicit creation authorization management.
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000004', true);
-select is((select count(*)::integer from public.boards), 2, 'system administrator sees all boards without membership');
-select is((select count(*)::integer from public.board_columns), 2, 'system administrator sees all columns');
-select is((select count(*)::integer from public.departments), 3, 'system administrator sees departments');
+select is((select count(*)::integer from public.boards
+ where id in ('30000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002')),
+ 2, 'system administrator sees all boards without membership');
+select is((select count(*)::integer from public.board_columns
+ where id in ('40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000002')),
+ 2, 'system administrator sees all columns');
+select is((select count(*)::integer from public.departments
+ where id in ('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000003')),
+ 3, 'system administrator sees departments');
 select lives_ok($$insert into public.board_creation_authorizations(user_id) values
  ('10000000-0000-4000-8000-000000000001')$$, 'system administrator authorizes creator');
 select is((select granted_by from public.board_creation_authorizations where user_id='10000000-0000-4000-8000-000000000001'),
