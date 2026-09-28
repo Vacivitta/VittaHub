@@ -12,8 +12,8 @@
 .conversation-list h2 {
   margin: 0 8px 22px;
 }
-.conversation-list label {
-  margin: 0 8px 20px;
+.list-feedback {
+  padding: 0 8px;
 }
 .conversation {
   display: flex;
@@ -48,6 +48,11 @@
   display: flex;
   flex-direction: column;
 }
+.conversation-feedback {
+  margin: auto;
+  padding: 40px 24px;
+  text-align: center;
+}
 .conversation-header {
   display: flex;
   gap: 12px;
@@ -69,12 +74,11 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+  min-height: 380px;
+  overflow-y: auto;
 }
-.message-date {
-  text-align: center;
-  color: var(--muted);
-  font-size: 11px;
-  margin: 0 0 12px;
+.empty-history {
+  margin: auto;
 }
 .message {
   align-self: flex-start;
@@ -98,6 +102,8 @@
 .message p {
   font-size: 13px;
   margin: 7px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .message time {
   display: block;
@@ -113,9 +119,13 @@
   align-items: stretch;
   margin-top: 8px;
 }
-.composer input {
+.composer textarea {
   min-width: 0;
   flex: 1;
+  margin-top: 0;
+}
+.composer button {
+  align-self: stretch;
 }
 .composer p {
   margin-bottom: 0;

@@ -6,6 +6,7 @@ import { routes } from './app.routes';
 import { signal } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { BoardsService } from './features/boards/boards.service';
+import { ChatService } from './features/chat/chat.service';
 import { TasksService } from './features/tasks/tasks.service';
 
 describe('Vacivitta interface', () => {
@@ -40,6 +41,22 @@ describe('Vacivitta interface', () => {
         listComments: vi.fn().mockResolvedValue([]),
         getById: vi.fn().mockResolvedValue({ status: 'unavailable' }),
         create: vi.fn(),
+      } },
+      { provide: ChatService, useValue: {
+        listMyConversations: vi.fn().mockResolvedValue([
+          { id: 'conversation-1', kind: 'individual', title: null, created_at: '2026-09-28T10:00:00Z', last_activity_at: '2026-09-28T12:00:00Z' },
+          { id: 'conversation-2', kind: 'individual', title: null, created_at: '2026-09-28T09:00:00Z', last_activity_at: '2026-09-28T11:00:00Z' },
+        ]),
+        listConversationParticipants: vi.fn().mockImplementation(async (id: string) => [
+          { user_id: 'test-user', display_name: 'Conta Local' },
+          { user_id: id === 'conversation-2' ? 'colleague-a' : 'colleague-b', display_name: id === 'conversation-2' ? 'Colega Alfa' : 'Colega Beta' },
+        ]),
+        listMessages: vi.fn().mockImplementation(async (id: string) => id === 'conversation-2' ? [{
+          id: 'message-1', conversation_id: id, author_id: 'colleague-a', content: 'Mensagem persistida', created_at: '2026-09-28T11:00:00Z',
+        }] : []),
+        sendMessage: vi.fn(),
+        subscribeToMessages: vi.fn().mockReturnValue({ id: 'channel' }),
+        removeMessageSubscription: vi.fn().mockResolvedValue(undefined),
       } },
     ] });
   });
@@ -146,8 +163,15 @@ describe('Vacivitta interface', () => {
 
   it('selects a conversation and keeps sending disabled', async () => {
     const harness = await RouterTestingHarness.create('/chat');
+    await vi.waitFor(() => {
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.querySelectorAll('.conversation').length).toBe(2);
+    });
     (harness.routeNativeElement?.querySelectorAll('.conversation')[1] as HTMLButtonElement).click();
-    await harness.fixture.whenStable();
+    await vi.waitFor(() => {
+      harness.detectChanges();
+      expect(harness.routeNativeElement?.querySelector('.conversation-header')).not.toBeNull();
+    });
     expect(
       harness.routeNativeElement?.querySelector('.conversation-header')?.textContent,
     ).toContain('Colega Alfa');

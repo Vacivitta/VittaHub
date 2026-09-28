@@ -236,3 +236,13 @@ de pendências é incremental, preparada somente para revisão e ainda não apli
 - Entrar em `aguardando_terceiro` exige explicação não vazia e registra, atomicamente,
   a mudança de estado, o comentário humano e o evento de sistema.
 - Retomar registra evento de sistema. Nenhuma das transições altera `column_id`.
+
+## 17. Decisões aprovadas — Chat (28/09/2026)
+
+- Qualquer usuário autenticado e ativo pode iniciar conversa individual com qualquer
+  outro usuário ativo.
+- Somente usuários com papel global `gestor` ou `administrador` podem criar conversas
+  em grupo; membros não podem criá-las. O nome canônico do papel no banco continua
+  sendo `administrador`, conforme a seção 12.
+- Leitura, participação e envio continuam restritos aos participantes da conversa por RLS.
+- A criação de conversas individuais e grupos permanece fora da Tarefa 14.

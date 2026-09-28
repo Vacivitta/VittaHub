@@ -1,4 +1,5 @@
 import { inject, Injectable } from '@angular/core';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
 import { ChatConversation, ChatMessage, ConversationParticipant } from './chat.models';
@@ -19,7 +20,7 @@ export class ChatService {
       if (error || this.auth.session()?.user.id !== userId) throw new Error();
       return data ?? [];
     } catch {
-      throw new Error('NÃ£o foi possÃ­vel carregar suas conversas. Tente novamente.');
+      throw new Error('Não foi possível carregar suas conversas. Tente novamente.');
     }
   }
 
@@ -32,7 +33,7 @@ export class ChatService {
       if (error || this.auth.session()?.user.id !== userId) throw new Error();
       return (data ?? []) as ConversationParticipant[];
     } catch {
-      throw new Error('NÃ£o foi possÃ­vel carregar os participantes da conversa.');
+      throw new Error('Não foi possível carregar os participantes da conversa.');
     }
   }
 
@@ -48,7 +49,7 @@ export class ChatService {
       if (error || this.auth.session()?.user.id !== userId) throw new Error();
       return data ?? [];
     } catch {
-      throw new Error('NÃ£o foi possÃ­vel carregar as mensagens. Tente novamente.');
+      throw new Error('Não foi possível carregar as mensagens. Tente novamente.');
     }
   }
 
@@ -65,14 +66,35 @@ export class ChatService {
       if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId) throw new Error();
       return data;
     } catch {
-      throw new Error('NÃ£o foi possÃ­vel enviar a mensagem. Tente novamente.');
+      throw new Error('Não foi possível enviar a mensagem. Tente novamente.');
     }
+  }
+
+  subscribeToMessages(
+    conversationId: string,
+    onMessage: (message: ChatMessage) => void,
+    onSubscribed: () => void,
+  ): RealtimeChannel {
+    return this.client.channel(`messages:${conversationId}`)
+      .on<ChatMessage>('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      }, (payload) => onMessage(payload.new))
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') onSubscribed();
+      });
+  }
+
+  async removeMessageSubscription(channel: RealtimeChannel): Promise<void> {
+    await this.client.removeChannel(channel);
   }
 
   private async authenticatedUser(): Promise<string> {
     await this.auth.ready;
     const userId = this.auth.session()?.user.id;
-    if (!userId) throw new Error('SessÃ£o invÃ¡lida.');
+    if (!userId) throw new Error('Sessão inválida.');
     return userId;
   }
 }

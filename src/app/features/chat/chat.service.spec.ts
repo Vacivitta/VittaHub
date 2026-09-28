@@ -9,13 +9,18 @@ describe('ChatService', () => {
   const auth = { session, ready: Promise.resolve() };
   const returns = vi.fn();
   const query = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), returns };
-  const client = { from: vi.fn(), rpc: vi.fn() };
+  const channel = { on: vi.fn(), subscribe: vi.fn() };
+  const client = { from: vi.fn(), rpc: vi.fn(), channel: vi.fn(), removeChannel: vi.fn() };
 
   beforeEach(() => {
     session.set({ user: { id: 'user-1' } });
     auth.ready = Promise.resolve();
     client.from.mockReset().mockReturnValue(query);
     client.rpc.mockReset();
+    client.channel.mockReset().mockReturnValue(channel);
+    client.removeChannel.mockReset().mockResolvedValue('ok');
+    channel.on.mockReset().mockReturnValue(channel);
+    channel.subscribe.mockReset().mockReturnValue(channel);
     query.select.mockReset().mockReturnValue(query);
     query.eq.mockReset().mockReturnValue(query);
     query.order.mockReset().mockReturnValue(query);
@@ -55,7 +60,7 @@ describe('ChatService', () => {
   it('loads message history in stable chronological order', async () => {
     const messages = [{
       id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-1',
-      content: 'OlÃ¡', created_at: '2026-09-28T10:00:00Z',
+      content: 'Olá', created_at: '2026-09-28T10:00:00Z',
     }];
     returns.mockResolvedValue({ data: messages, error: null });
 
@@ -85,6 +90,31 @@ describe('ChatService', () => {
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
+  it('subscribes only to inserts from the selected conversation', () => {
+    const onMessage = vi.fn();
+    const onSubscribed = vi.fn();
+    const service = TestBed.inject(ChatService);
+
+    expect(service.subscribeToMessages('conversation-1', onMessage, onSubscribed)).toBe(channel);
+    expect(client.channel).toHaveBeenCalledExactlyOnceWith('messages:conversation-1');
+    expect(channel.on).toHaveBeenCalledExactlyOnceWith('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'messages',
+      filter: 'conversation_id=eq.conversation-1',
+    }, expect.any(Function));
+
+    const message = { id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-2',
+      content: 'Nova', created_at: '2026-09-28T12:00:00Z' };
+    channel.on.mock.calls[0][2]({ new: message });
+    channel.subscribe.mock.calls[0][0]('SUBSCRIBED');
+    expect(onMessage).toHaveBeenCalledExactlyOnceWith(message);
+    expect(onSubscribed).toHaveBeenCalledOnce();
+  });
+
+  it('removes a Realtime channel through the shared client', async () => {
+    await TestBed.inject(ChatService).removeMessageSubscription(channel as never);
+    expect(client.removeChannel).toHaveBeenCalledExactlyOnceWith(channel);
+  });
+
   it('returns empty lists when Supabase has no visible data', async () => {
     returns.mockResolvedValue({ data: null, error: null });
     expect(await TestBed.inject(ChatService).listMyConversations()).toEqual([]);
@@ -94,10 +124,10 @@ describe('ChatService', () => {
   });
 
   it.each([
-    ['conversations', 'NÃ£o foi possÃ­vel carregar suas conversas. Tente novamente.'],
-    ['participants', 'NÃ£o foi possÃ­vel carregar os participantes da conversa.'],
-    ['messages', 'NÃ£o foi possÃ­vel carregar as mensagens. Tente novamente.'],
-    ['send', 'NÃ£o foi possÃ­vel enviar a mensagem. Tente novamente.'],
+    ['conversations', 'Não foi possível carregar suas conversas. Tente novamente.'],
+    ['participants', 'Não foi possível carregar os participantes da conversa.'],
+    ['messages', 'Não foi possível carregar as mensagens. Tente novamente.'],
+    ['send', 'Não foi possível enviar a mensagem. Tente novamente.'],
   ] as const)('hides internal errors from %s', async (operation, expectedMessage) => {
     const service = TestBed.inject(ChatService);
     returns.mockResolvedValue({ data: null, error: { message: 'private database detail' } });
@@ -112,7 +142,7 @@ describe('ChatService', () => {
 
   it('does not query without a current session', async () => {
     session.set(null);
-    await expect(TestBed.inject(ChatService).listMyConversations()).rejects.toThrow('SessÃ£o invÃ¡lida.');
+    await expect(TestBed.inject(ChatService).listMyConversations()).rejects.toThrow('Sessão inválida.');
     expect(client.from).not.toHaveBeenCalled();
   });
 
@@ -122,6 +152,6 @@ describe('ChatService', () => {
       return { data: [], error: null };
     });
     await expect(TestBed.inject(ChatService).listMyConversations())
-      .rejects.toThrow('NÃ£o foi possÃ­vel carregar suas conversas.');
+      .rejects.toThrow('Não foi possível carregar suas conversas.');
   });
 });

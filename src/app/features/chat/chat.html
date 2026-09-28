@@ -1,63 +1,89 @@
-<app-page-heading title="Chat" description="Conversas que mantêm a equipe conectada." />
+<app-page-heading title="Chat" description="Conversas individuais da equipe." />
 <div class="chat-layout panel">
   <aside class="conversation-list" aria-label="Conversas">
     <h2>Conversas VittaHub</h2>
-    <label class="search-field"
-      ><span class="sr-only">Buscar conversa</span
-      ><input
-        type="search"
-        placeholder="Buscar conversa"
-        [value]="query()"
-        (input)="query.set($any($event.target).value)"
-    /></label>
-    <div class="conversation-buttons">
-      @for (conversation of filtered(); track conversation.id) {
-        <button
-          type="button"
-          class="conversation"
-          [class.selected]="selected().id === conversation.id"
-          [attr.aria-pressed]="selected().id === conversation.id"
-          (click)="selected.set(conversation)"
-        >
-          <span class="avatar">{{ conversation.initials }}</span
-          ><span
-            ><strong>{{ conversation.name }}</strong
-            ><small>{{ conversation.messages[conversation.messages.length - 1].text }}</small></span
+    @if (listLoading()) {
+      <p class="note" role="status">Carregando conversas…</p>
+    } @else if (listError()) {
+      <div class="list-feedback">
+        <p role="alert">{{ listError() }}</p>
+        <button type="button" (click)="loadConversations()">Tentar novamente</button>
+      </div>
+    } @else {
+      <div class="conversation-buttons">
+        @for (item of conversations(); track item.conversation.id) {
+          <button
+            type="button"
+            class="conversation"
+            [class.selected]="selected()?.conversation?.id === item.conversation.id"
+            [attr.aria-pressed]="selected()?.conversation?.id === item.conversation.id"
+            (click)="openConversation(item)"
           >
-        </button>
-      } @empty {
-        <p class="note" role="status">Nenhuma conversa encontrada.</p>
-      }
-    </div>
+            <span class="avatar">{{ item.initials }}</span>
+            <span>
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.conversation.last_activity_at | date:'dd/MM HH:mm' }}</small>
+            </span>
+          </button>
+        } @empty {
+          <p class="note" role="status">Nenhuma conversa individual disponível.</p>
+        }
+      </div>
+    }
   </aside>
+
   <section class="message-panel" aria-label="Conversa selecionada">
-    <header class="conversation-header">
-      <span class="avatar">{{ selected().initials }}</span>
-      <div>
-        <h2>{{ selected().name }}</h2>
-        <p class="small muted">{{ selected().description }}</p>
+    @if (!selected()) {
+      <div class="conversation-feedback" role="status">
+        <h2>Selecione uma conversa</h2>
+        <p>Escolha uma conversa existente para consultar o histórico.</p>
       </div>
-    </header>
-    <div class="messages" aria-live="polite">
-      <p class="message-date">24 de setembro de 2026 · Exemplo</p>
-      @for (message of selected().messages; track $index) {
-        <article class="message" [class.own]="message.own">
-          <span class="message-author">{{ message.author }}</span>
-          <p>{{ message.text }}</p>
-          <time>{{ message.time }}</time>
-        </article>
-      }
-    </div>
-    <div class="composer">
-      <label for="demo-message">Mensagem de demonstração</label>
-      <div class="row">
-        <input
-          id="demo-message"
-          placeholder="Envio disponível em uma próxima etapa"
-          disabled
-        /><button type="button" disabled>Enviar</button>
+    } @else if (conversationLoading()) {
+      <div class="conversation-feedback" role="status">Carregando histórico…</div>
+    } @else if (conversationError()) {
+      <div class="conversation-feedback">
+        <h2>Conversa indisponível</h2>
+        <p role="alert">{{ conversationError() }}</p>
+        <button type="button" (click)="openConversation(selected()!)">Tentar novamente</button>
       </div>
-      <p class="small muted">Mensagens fictícias, somente para visualização.</p>
-    </div>
+    } @else {
+      <header class="conversation-header">
+        <span class="avatar">{{ selected()!.initials }}</span>
+        <div>
+          <h2>{{ selected()!.name }}</h2>
+          <p class="small muted">Conversa individual</p>
+        </div>
+      </header>
+      <div class="messages" aria-live="polite" aria-label="Histórico de mensagens">
+        @for (message of messages(); track message.id) {
+          <article class="message" [class.own]="isOwn(message)">
+            <span class="message-author">{{ authorName(message) }}</span>
+            <p>{{ message.content }}</p>
+            <time [attr.datetime]="message.created_at">{{ message.created_at | date:'HH:mm' }}</time>
+          </article>
+        } @empty {
+          <p class="note empty-history" role="status">A conversa começa por aqui. Envie a primeira mensagem ao seu colega.</p>
+        }
+      </div>
+      <div class="composer">
+        <label for="chat-message">Mensagem</label>
+        <div class="row">
+          <textarea
+            id="chat-message"
+            rows="2"
+            placeholder="Escreva uma mensagem"
+            [value]="draft()"
+            [disabled]="sending()"
+            (input)="draft.set($any($event.target).value); sendError.set('')"
+            (keydown)="handleComposerKeydown($event)"
+          ></textarea>
+          <button type="button" [disabled]="sending() || !draft().trim()" (click)="send()">
+            {{ sending() ? 'Enviando…' : 'Enviar' }}
+          </button>
+        </div>
+        @if (sendError()) { <p class="form-error" role="alert">{{ sendError() }}</p> }
+        <p class="small muted">Enter envia. Shift+Enter adiciona uma nova linha.</p>
+      </div>
+    }
   </section>
 </div>
