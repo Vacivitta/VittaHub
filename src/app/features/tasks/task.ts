@@ -5,7 +5,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthService } from '../../core/auth/auth.service';
 import { PageHeading } from '../../shared/page-heading';
 import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
-import { BoardAssignee, TaskEvent, TaskResult } from './task-detail';
+import { BoardAssignee, TaskComment, TaskEvent, TaskResult } from './task-detail';
 import { TasksService } from './tasks.service';
 
 @Component({
@@ -40,6 +40,28 @@ import { TasksService } from './tasks.service';
             </button>
           </div>
         }
+        @if (canWaitForThirdParty()) {
+          <div class="task-action">
+            <button type="button" (click)="thirdPartyFormOpen.set(true)" [disabled]="transitioning()">
+              Aguardar terceiro
+            </button>
+          </div>
+        }
+        @if (thirdPartyFormOpen()) {
+          <div class="third-party-form">
+            <h2>Quem ou o que estamos aguardando?</h2>
+            <label>Descreva a dependência externa
+              <textarea rows="3" [value]="thirdPartyExplanation()"
+                (input)="thirdPartyExplanation.set($any($event.target).value)"></textarea>
+            </label>
+            <div class="row">
+              <button class="button primary" type="button" (click)="waitForThirdParty()" [disabled]="transitioning()">
+                {{ transitioning() ? 'Atualizando…' : 'Confirmar espera' }}
+              </button>
+              <button type="button" (click)="closeThirdPartyForm()" [disabled]="transitioning()">Cancelar</button>
+            </div>
+          </div>
+        }
         @if (feedback()) { <p class="action-feedback" role="status">{{ feedback() }}</p> }
         @if (actionError()) { <p class="form-error" role="alert">{{ actionError() }}</p> }
         @if (current.board) {
@@ -56,6 +78,30 @@ import { TasksService } from './tasks.service';
         } @empty {
           <p class="small muted">{{ historyError() || 'Nenhum evento registrado.' }}</p>
         }
+      </section>
+      <section class="panel task-comments-panel" aria-label="Comentários da pendência">
+        <h2>Comentários</h2>
+        @for (comment of comments(); track comment.id) {
+          <article class="comment-entry">
+            <div class="row">
+              <strong>{{ commentAuthorName(comment.author_id) || 'Autor indisponível' }}</strong>
+              <span class="small muted">{{ comment.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
+            </div>
+            <p>{{ comment.content }}</p>
+          </article>
+        } @empty {
+          <p class="small muted">{{ commentsError() || 'Nenhum comentário registrado.' }}</p>
+        }
+        <div class="comment-form">
+          <label>Adicionar comentário
+            <textarea rows="3" [value]="commentText()"
+              (input)="commentText.set($any($event.target).value)"></textarea>
+          </label>
+          @if (commentError()) { <p class="form-error" role="alert">{{ commentError() }}</p> }
+          <button class="button primary" type="button" (click)="submitComment()" [disabled]="commenting()">
+            {{ commenting() ? 'Enviando…' : 'Comentar' }}
+          </button>
+        </div>
       </section>
     } @else if (result().status === 'unavailable') {
       <section class="panel empty">
@@ -78,7 +124,14 @@ export class TaskDetailPage {
   private readonly attempt = signal(0);
   private readonly assignees = signal<BoardAssignee[]>([]);
   readonly history = signal<TaskEvent[]>([]);
+  readonly comments = signal<TaskComment[]>([]);
   readonly historyError = signal('');
+  readonly commentsError = signal('');
+  readonly commentText = signal('');
+  readonly commentError = signal('');
+  readonly commenting = signal(false);
+  readonly thirdPartyFormOpen = signal(false);
+  readonly thirdPartyExplanation = signal('');
   readonly transitioning = signal(false);
   readonly feedback = signal('');
   readonly actionError = signal('');
@@ -89,13 +142,19 @@ export class TaskDetailPage {
   });
   readonly assigneeName = computed(() => this.nameFor(this.task()?.assignee_id));
   readonly creatorName = computed(() => this.nameFor(this.task()?.created_by));
-  readonly action = computed<'accept' | 'start' | 'complete' | null>(() => {
+  readonly action = computed<'accept' | 'start' | 'complete' | 'resume' | null>(() => {
     const task = this.task();
     if (!task || this.auth.session()?.user.id !== task.assignee_id) return null;
     if (task.business_state === 'aguardando_aceite') return 'accept';
     if (task.business_state === 'a_fazer') return 'start';
     if (task.business_state === 'fazendo') return 'complete';
+    if (task.business_state === 'aguardando_terceiro') return 'resume';
     return null;
+  });
+  readonly canWaitForThirdParty = computed(() => {
+    const task = this.task();
+    return !!task && task.business_state === 'fazendo'
+      && this.auth.session()?.user.id === task.assignee_id;
   });
   readonly labels = BUSINESS_STATE_LABELS;
 
@@ -108,7 +167,13 @@ export class TaskDetailPage {
       this.result.set({ status: 'loading' });
       this.assignees.set([]);
       this.history.set([]);
+      this.comments.set([]);
       this.historyError.set('');
+      this.commentsError.set('');
+      this.commentText.set('');
+      this.commentError.set('');
+      this.thirdPartyFormOpen.set(false);
+      this.thirdPartyExplanation.set('');
       this.feedback.set('');
       this.actionError.set('');
       void this.load(id, () => active);
@@ -123,6 +188,7 @@ export class TaskDetailPage {
     await Promise.all([
       this.loadAssignees(result.task.board_id, isActive),
       this.loadHistory(result.task.id, isActive),
+      this.loadComments(result.task.id, isActive),
     ]);
   }
 
@@ -147,14 +213,54 @@ export class TaskDetailPage {
     }
   }
 
+  private async loadComments(taskId: string, isActive: () => boolean = () => true): Promise<void> {
+    try {
+      const comments = await this.service.listComments(taskId);
+      if (isActive()) {
+        this.comments.set(comments);
+        this.commentsError.set('');
+      }
+    } catch {
+      if (isActive()) this.commentsError.set('Comentários indisponíveis.');
+    }
+  }
+
   private nameFor(id: string | undefined): string {
     if (!id) return '';
     if (this.auth.profile()?.id === id) return this.auth.displayName();
     return this.assignees().find((person) => person.id === id)?.display_name?.trim() || '';
   }
 
-  actionLabel(action: 'accept' | 'start' | 'complete'): string {
-    return { accept: 'Aceitar pendência', start: 'Iniciar pendência', complete: 'Concluir pendência' }[action];
+  commentAuthorName(id: string): string {
+    return this.nameFor(id);
+  }
+
+  actionLabel(action: 'accept' | 'start' | 'complete' | 'resume'): string {
+    return {
+      accept: 'Aceitar pendência', start: 'Iniciar pendência', complete: 'Concluir pendência',
+      resume: 'Retomar pendência',
+    }[action];
+  }
+
+  async submitComment(): Promise<void> {
+    const task = this.task();
+    const content = this.commentText().trim();
+    if (!task || this.commenting()) return;
+    if (!content) {
+      this.commentError.set('Escreva um comentário.');
+      return;
+    }
+    this.commenting.set(true);
+    this.commentError.set('');
+    try {
+      await this.service.addComment(task.id, content);
+      await this.loadComments(task.id);
+      this.commentText.set('');
+    } catch {
+      this.commentError.set('Não foi possível adicionar o comentário. Tente novamente.');
+    } finally {
+      this.commenting.set(false);
+    }
   }
 
   async runAction(): Promise<void> {
@@ -167,12 +273,10 @@ export class TaskDetailPage {
     try {
       if (action === 'accept') await this.service.accept(task.id);
       else if (action === 'start') await this.service.start(task.id);
-      else await this.service.complete(task.id);
+      else if (action === 'complete') await this.service.complete(task.id);
+      else await this.service.resume(task.id);
 
-      const refreshed = await this.service.getById(task.id);
-      if (refreshed.status !== 'loaded') throw new Error();
-      this.result.set(refreshed);
-      await this.loadHistory(task.id);
+      await this.refreshTaskContent(task.id);
       this.feedback.set(action === 'complete'
         ? 'Pendência concluída com sucesso.'
         : 'Pendência atualizada com sucesso.');
@@ -181,6 +285,45 @@ export class TaskDetailPage {
     } finally {
       this.transitioning.set(false);
     }
+  }
+
+  async waitForThirdParty(): Promise<void> {
+    const task = this.task();
+    const content = this.thirdPartyExplanation().trim();
+    if (!task || !this.canWaitForThirdParty() || this.transitioning()) return;
+    if (!content) {
+      this.actionError.set('Descreva a dependência externa.');
+      return;
+    }
+    this.transitioning.set(true);
+    this.feedback.set('');
+    this.actionError.set('');
+    try {
+      await this.service.waitForThirdParty(task.id, content);
+      await this.refreshTaskContent(task.id);
+      this.thirdPartyExplanation.set('');
+      this.thirdPartyFormOpen.set(false);
+      this.feedback.set('Pendência marcada como aguardando terceiro.');
+    } catch {
+      this.actionError.set('Não foi possível colocar a pendência em espera. Tente novamente.');
+    } finally {
+      this.transitioning.set(false);
+    }
+  }
+
+  closeThirdPartyForm(): void {
+    if (!this.transitioning()) {
+      this.thirdPartyFormOpen.set(false);
+      this.thirdPartyExplanation.set('');
+      this.actionError.set('');
+    }
+  }
+
+  private async refreshTaskContent(taskId: string): Promise<void> {
+    const refreshed = await this.service.getById(taskId);
+    if (refreshed.status !== 'loaded') throw new Error();
+    this.result.set(refreshed);
+    await Promise.all([this.loadHistory(taskId), this.loadComments(taskId)]);
   }
 
   retry(): void {

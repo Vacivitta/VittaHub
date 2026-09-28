@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
-import { BoardAssignee, CreateTaskInput, TaskDetail, TaskEvent, TaskResult, TaskWithContext } from './task-detail';
+import { BoardAssignee, CreateTaskInput, TaskComment, TaskDetail, TaskEvent, TaskResult, TaskWithContext } from './task-detail';
 
 const TASK_FIELDS = 'id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at, accepted_at, completed_at';
 const TASK_WITH_CONTEXT_SELECT = `${TASK_FIELDS}, board:boards!tasks_board_id_fkey(id, title), column:board_columns!tasks_board_column_fkey(id, title)`;
@@ -93,6 +93,35 @@ export class TasksService {
     }
   }
 
+  async listComments(taskId: string): Promise<TaskComment[]> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.from('task_comments')
+        .select('id, task_id, author_id, content, created_at')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .returns<TaskComment[]>();
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      return data ?? [];
+    } catch {
+      throw new Error('Não foi possível carregar os comentários.');
+    }
+  }
+
+  async addComment(taskId: string, content: string): Promise<string> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc('add_task_comment', {
+        p_task_id: taskId, p_content: content.trim(),
+      });
+      if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId) throw new Error();
+      return data;
+    } catch {
+      throw new Error('Não foi possível adicionar o comentário. Tente novamente.');
+    }
+  }
+
   accept(taskId: string): Promise<void> {
     return this.transition('accept_task', taskId);
   }
@@ -103,6 +132,22 @@ export class TasksService {
 
   complete(taskId: string): Promise<void> {
     return this.transition('complete_task', taskId);
+  }
+
+  resume(taskId: string): Promise<void> {
+    return this.transition('resume_task', taskId);
+  }
+
+  async waitForThirdParty(taskId: string, content: string): Promise<void> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { error } = await this.client.rpc('wait_task_for_third_party', {
+        p_task_id: taskId, p_content: content.trim(),
+      });
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+    } catch {
+      throw new Error('Não foi possível colocar a pendência em espera. Tente novamente.');
+    }
   }
 
   async create(input: CreateTaskInput): Promise<string> {
@@ -131,7 +176,7 @@ export class TasksService {
     return userId;
   }
 
-  private async transition(rpc: 'accept_task' | 'start_task' | 'complete_task', taskId: string): Promise<void> {
+  private async transition(rpc: 'accept_task' | 'start_task' | 'complete_task' | 'resume_task', taskId: string): Promise<void> {
     const userId = await this.authenticatedUser();
     try {
       const { error } = await this.client.rpc(rpc, { p_task_id: taskId });

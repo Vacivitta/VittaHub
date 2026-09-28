@@ -630,6 +630,28 @@ h3 {
 .history-entry strong {
   font-size: 13px;
 }
+.task-comments-panel {
+  padding: 26px;
+  margin-top: 20px;
+}
+.comment-entry {
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.comment-entry p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+.comment-form,
+.third-party-form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.comment-form button,
+.third-party-form .row {
+  margin-top: 12px;
+}
 .empty {
   padding: 40px 24px;
   text-align: center;

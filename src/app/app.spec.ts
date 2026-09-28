@@ -37,6 +37,7 @@ describe('Vacivitta interface', () => {
         listMine: vi.fn().mockResolvedValue([]),
         listAssignees: vi.fn().mockResolvedValue([]),
         listHistory: vi.fn().mockResolvedValue([]),
+        listComments: vi.fn().mockResolvedValue([]),
         getById: vi.fn().mockResolvedValue({ status: 'unavailable' }),
         create: vi.fn(),
       } },

@@ -12,9 +12,13 @@ describe('TaskDetailPage', () => {
   const getById = vi.fn();
   const listAssignees = vi.fn();
   const listHistory = vi.fn();
+  const listComments = vi.fn();
+  const addComment = vi.fn();
   const accept = vi.fn();
   const start = vi.fn();
   const complete = vi.fn();
+  const resume = vi.fn();
+  const waitForThirdParty = vi.fn();
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
   const profile = signal<{ id: string; display_name: string | null } | null>({ id: 'user-1', display_name: 'Pessoa Atual' });
   const auth = { session, profile, displayName: signal('Pessoa Atual') };
@@ -35,12 +39,19 @@ describe('TaskDetailPage', () => {
       { id: 'user-3', display_name: 'Criador visível' },
     ]);
     listHistory.mockReset().mockResolvedValue([]);
+    listComments.mockReset().mockResolvedValue([]);
+    addComment.mockReset().mockResolvedValue('comment-new');
     accept.mockReset().mockResolvedValue(undefined);
     start.mockReset().mockResolvedValue(undefined);
     complete.mockReset().mockResolvedValue(undefined);
+    resume.mockReset().mockResolvedValue(undefined);
+    waitForThirdParty.mockReset().mockResolvedValue(undefined);
     TestBed.configureTestingModule({ providers: [
       provideRouter([{ path: 'pendencias/:id', component: TaskDetailPage }]),
-      { provide: TasksService, useValue: { getById, listAssignees, listHistory, accept, start, complete } },
+      { provide: TasksService, useValue: {
+        getById, listAssignees, listHistory, listComments, addComment,
+        accept, start, complete, resume, waitForThirdParty,
+      } },
       { provide: AuthService, useValue: auth },
     ] });
   });
@@ -68,6 +79,7 @@ describe('TaskDetailPage', () => {
     expect(getById).toHaveBeenCalledExactlyOnceWith(id);
     expect(listAssignees).toHaveBeenCalledExactlyOnceWith('board-1');
     expect(listHistory).toHaveBeenCalledExactlyOnceWith(id);
+    expect(listComments).toHaveBeenCalledExactlyOnceWith(id);
     expect(text).toContain('Detalhe real');
     expect(text).toContain('Descrição persistida');
     expect(text).toContain('Responsável visível');
@@ -89,7 +101,8 @@ describe('TaskDetailPage', () => {
   });
 
   it.each([
-    ['a_fazer', 'Iniciar pendência'], ['fazendo', 'Concluir pendência'], ['concluido', null],
+    ['a_fazer', 'Iniciar pendência'], ['fazendo', 'Concluir pendência'],
+    ['aguardando_terceiro', 'Retomar pendência'], ['concluido', null],
   ] as const)('shows the correct action for %s', async (state, label) => {
     session.set({ user: { id: 'user-2' } });
     getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: state } });
@@ -97,6 +110,107 @@ describe('TaskDetailPage', () => {
     const button = harness.routeNativeElement?.querySelector('.task-action button');
     if (label) expect(button?.textContent).toContain(label);
     else expect(button).toBeNull();
+  });
+
+  it('loads comments with safely available author names', async () => {
+    listComments.mockResolvedValue([{ id: 'comment-1', task_id: id, author_id: 'user-2',
+      content: 'Comentário carregado', created_at: '2026-09-28T15:00:00Z' }]);
+    const harness = await render();
+    const comments = harness.routeNativeElement!.querySelector('[aria-label="Comentários da pendência"]');
+    expect(comments?.textContent).toContain('Comentário carregado');
+    expect(comments?.textContent).toContain('Responsável visível');
+  });
+
+  it('sends a valid comment and shows it without reloading the page', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.commentText.set('  Novo comentário  ');
+    listComments.mockResolvedValue([{ id: 'comment-new', task_id: id, author_id: 'user-1',
+      content: 'Novo comentário', created_at: '2026-09-28T15:00:00Z' }]);
+    await page.submitComment();
+    harness.detectChanges();
+    expect(addComment).toHaveBeenCalledExactlyOnceWith(id, 'Novo comentário');
+    expect(harness.routeNativeElement?.textContent).toContain('Novo comentário');
+    expect(page.commentText()).toBe('');
+  });
+
+  it('does not send an empty comment', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.commentText.set('   ');
+    await page.submitComment();
+    harness.detectChanges();
+    expect(addComment).not.toHaveBeenCalled();
+    expect(harness.routeNativeElement?.textContent).toContain('Escreva um comentário.');
+  });
+
+  it('prevents duplicate comment submission while loading', async () => {
+    let resolve!: (id: string) => void;
+    addComment.mockImplementation(() => new Promise<string>((done) => { resolve = done; }));
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.commentText.set('Comentário lento');
+    const pending = page.submitComment();
+    await page.submitComment();
+    expect(addComment).toHaveBeenCalledTimes(1);
+    expect(page.commenting()).toBe(true);
+    resolve('comment-new');
+    await pending;
+  });
+
+  it('shows a friendly comment error', async () => {
+    addComment.mockRejectedValue(new Error('private detail'));
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.commentText.set('Comentário com falha');
+    await page.submitComment();
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Não foi possível adicionar o comentário.');
+    expect(harness.routeNativeElement?.textContent).not.toContain('private detail');
+  });
+
+  it('offers awaiting third party only to the assignee while doing and requires an explanation', async () => {
+    session.set({ user: { id: 'user-2' } });
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: 'fazendo' } });
+    const harness = await render();
+    expect(harness.routeNativeElement?.textContent).toContain('Aguardar terceiro');
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.thirdPartyFormOpen.set(true);
+    await page.waitForThirdParty();
+    harness.detectChanges();
+    expect(waitForThirdParty).not.toHaveBeenCalled();
+    expect(harness.routeNativeElement?.textContent).toContain('Descreva a dependência externa.');
+  });
+
+  it('moves doing to awaiting third party with a comment and preserves the column', async () => {
+    session.set({ user: { id: 'user-2' } });
+    const doing = { ...task, business_state: 'fazendo' as const };
+    getById.mockResolvedValueOnce({ status: 'loaded', task: doing });
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.thirdPartyFormOpen.set(true);
+    page.thirdPartyExplanation.set('Fornecedor enviará confirmação');
+    getById.mockResolvedValue({ status: 'loaded', task: {
+      ...doing, business_state: 'aguardando_terceiro', column_id: 'column-1',
+    } });
+    await page.waitForThirdParty();
+    harness.detectChanges();
+    expect(waitForThirdParty).toHaveBeenCalledExactlyOnceWith(id, 'Fornecedor enviará confirmação');
+    expect(harness.routeNativeElement?.textContent).toContain('Aguardando terceiro');
+    expect(page.task()?.column_id).toBe('column-1');
+  });
+
+  it('resumes awaiting third party back to doing', async () => {
+    session.set({ user: { id: 'user-2' } });
+    const waiting = { ...task, business_state: 'aguardando_terceiro' as const };
+    getById.mockResolvedValueOnce({ status: 'loaded', task: waiting });
+    const harness = await render();
+    getById.mockResolvedValue({ status: 'loaded', task: { ...waiting, business_state: 'fazendo' } });
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('.task-action button')!.click();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(resume).toHaveBeenCalledExactlyOnceWith(id);
+    expect(harness.routeNativeElement?.textContent).toContain('Fazendo');
   });
 
   it('accepts once and refreshes state and history without changing the column', async () => {
@@ -175,5 +289,6 @@ describe('TaskDetailPage', () => {
     }
     expect(listAssignees).not.toHaveBeenCalled();
     expect(listHistory).not.toHaveBeenCalled();
+    expect(listComments).not.toHaveBeenCalled();
   });
 });

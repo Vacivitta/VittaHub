@@ -49,3 +49,11 @@ export interface TaskEvent {
   is_system: boolean;
   created_at: string;
 }
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+}

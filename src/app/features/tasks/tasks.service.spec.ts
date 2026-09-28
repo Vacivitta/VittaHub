@@ -78,8 +78,28 @@ describe('TasksService', () => {
     ]);
   });
 
+  it('loads comments in stable chronological order', async () => {
+    const comments = [{ id: 'comment-1', task_id: 'task-1', author_id: 'user-1',
+      content: 'Comentário', created_at: '2026-09-28T12:00:00Z' }];
+    returns.mockResolvedValue({ data: comments, error: null });
+    expect(await TestBed.inject(TasksService).listComments('task-1')).toEqual(comments);
+    expect(client.from).toHaveBeenCalledExactlyOnceWith('task_comments');
+    expect(query.eq).toHaveBeenCalledExactlyOnceWith('task_id', 'task-1');
+    expect(query.order.mock.calls).toEqual([
+      ['created_at', { ascending: true }], ['id', { ascending: true }],
+    ]);
+  });
+
+  it('adds a trimmed comment through the controlled RPC', async () => {
+    client.rpc.mockResolvedValue({ data: 'comment-new', error: null });
+    expect(await TestBed.inject(TasksService).addComment('task-1', '  Texto manual  ')).toBe('comment-new');
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith('add_task_comment', {
+      p_task_id: 'task-1', p_content: 'Texto manual',
+    });
+  });
+
   it.each([
-    ['accept', 'accept_task'], ['start', 'start_task'], ['complete', 'complete_task'],
+    ['accept', 'accept_task'], ['start', 'start_task'], ['complete', 'complete_task'], ['resume', 'resume_task'],
   ] as const)('%s uses only its controlled RPC', async (method, rpc) => {
     client.rpc.mockResolvedValue({ data: null, error: null });
     await TestBed.inject(TasksService)[method]('task-1');
@@ -91,6 +111,14 @@ describe('TasksService', () => {
     await expect(TestBed.inject(TasksService).accept('task-1')).rejects.toThrow(
       'Não foi possível atualizar a pendência. Tente novamente.',
     );
+  });
+
+  it('sends a trimmed third-party explanation through its controlled RPC', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    await TestBed.inject(TasksService).waitForThirdParty('task-1', '  Fornecedor externo  ');
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith('wait_task_for_third_party', {
+      p_task_id: 'task-1', p_content: 'Fornecedor externo',
+    });
   });
 
   it('does not query malformed task IDs', async () => {

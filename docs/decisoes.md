@@ -224,3 +224,15 @@ de pendências é incremental, preparada somente para revisão e ainda não apli
 - A mudança do estado de negócio não modifica a coluna Kanban.
 - Adiamento, `aguardando_terceiro`, recusa, reabertura e comentários manuais permanecem
   fora desta entrega.
+
+## 16. Decisões aprovadas — Tarefa 12 (28/09/2026)
+
+- Comentários manuais ficam separados dos eventos automáticos e são imutáveis pela
+  aplicação. Autor e instante são derivados no banco.
+- Quem pode visualizar uma pendência segundo a RLS atual pode ler e registrar seus
+  comentários; isso não amplia a visibilidade da pendência nem de `profiles`.
+- Somente o responsável pode executar `fazendo → aguardando_terceiro` e
+  `aguardando_terceiro → fazendo`.
+- Entrar em `aguardando_terceiro` exige explicação não vazia e registra, atomicamente,
+  a mudança de estado, o comentário humano e o evento de sistema.
+- Retomar registra evento de sistema. Nenhuma das transições altera `column_id`.
