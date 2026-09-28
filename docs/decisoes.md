@@ -194,3 +194,19 @@ de pendências é incremental, preparada somente para revisão e ainda não apli
 - Nesta etapa, a API terá apenas leitura. INSERT, UPDATE e DELETE ficam bloqueados para usuários da aplicação, inclusive administradores globais autenticados. Não há RPC de escrita de pendências.
 - Criação, atribuição, aceite, recusa, adiamentos, reabertura e movimentação permanecem para tarefas posteriores. Nenhum estado novo ou transição é aprovado nesta entrega.
 - Não aplicar a migration nem executar seus testes SQL antes de nova autorização; não acessar o banco remoto nem alterar o Angular.
+
+## 14. Decisões aprovadas — Tarefa 09 (28/09/2026)
+
+- A criação inicial de pendências usa uma RPC controlada. O banco deriva `created_by`
+  de `auth.uid()` e define o estado inicial como `a_fazer` para autoatribuição ou
+  `aguardando_aceite` para atribuição a outra pessoa.
+- O responsável deve ser participante atual e ativo do quadro. A coluna deve pertencer
+  ao mesmo quadro, e o criador deve possuir acesso autorizado ao quadro.
+- A seleção de responsável usa uma RPC específica que retorna somente `id` e
+  `display_name` dos participantes atuais e ativos. Ela exige acesso ao quadro,
+  não amplia a RLS de `profiles` e não constitui diretório geral de usuários.
+- Administradores globais podem usar as duas RPCs conforme o acesso global já aprovado.
+- `profiles.is_active` registra exclusivamente a situação administrativa necessária
+  para impedir novas atribuições a usuários inativos. Fluxos de ativação e inativação
+  permanecem administrativos e fora desta tarefa.
+- INSERT direto, UPDATE e DELETE de `tasks` continuam indisponíveis para a aplicação.

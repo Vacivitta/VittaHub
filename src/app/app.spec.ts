@@ -6,6 +6,7 @@ import { routes } from './app.routes';
 import { signal } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { BoardsService } from './features/boards/boards.service';
+import { TasksService } from './features/tasks/tasks.service';
 
 describe('Vacivitta interface', () => {
   const session = signal<object | null>({ user: { id: 'test-user' } });
@@ -29,6 +30,11 @@ describe('Vacivitta interface', () => {
         getById: vi.fn().mockImplementation(async (id: string) => id === '11111111-1111-4111-8111-111111111111'
           ? { status: 'loaded', board: { id, title: 'Quadro local', description: null, department: null, columns: [] } }
           : { status: 'unavailable' }),
+      } },
+      { provide: TasksService, useValue: {
+        list: vi.fn().mockResolvedValue([]),
+        listAssignees: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
       } },
     ] });
   });
