@@ -35,6 +35,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/tasks/tasks').then((m) => m.Tasks),
       },
       {
+        path: 'pendencias/:id',
+        title: 'Pendência | Vacivitta',
+        loadComponent: () => import('./features/tasks/task').then((m) => m.TaskDetailPage),
+      },
+      {
         path: 'chat',
         title: 'Chat | Vacivitta',
         loadComponent: () => import('./features/chat/chat').then((m) => m.Chat),

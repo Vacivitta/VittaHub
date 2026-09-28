@@ -107,6 +107,7 @@ import { BoardsService } from './boards.service';
               </p>
               <div class="task-list">
                 @for (task of tasksForColumn(column.id); track task.id) {
+                  <a class="task-card-link" [routerLink]="['/pendencias', task.id]" [attr.aria-label]="'Abrir pendência ' + task.title">
                   <article class="task-card">
                     <div class="row">
                       <span class="task-id">{{ task.is_private ? 'Privada' : 'Compartilhada' }}</span>
@@ -118,6 +119,7 @@ import { BoardsService } from './boards.service';
                       <span>Prazo · {{ task.due_at | date:'dd/MM/yyyy HH:mm' }}</span>
                     </div>
                   </article>
+                  </a>
                 } @empty {
                   <p class="empty-column">Nenhuma pendência nesta coluna.</p>
                 }

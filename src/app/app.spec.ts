@@ -14,6 +14,7 @@ describe('Vacivitta interface', () => {
     session,
     ready: Promise.resolve(),
     displayName: signal('Conta Local'),
+    profile: signal({ id: 'test-user', display_name: 'Conta Local' }),
     profileError: signal(''),
     signOut: vi.fn(),
   };
@@ -33,7 +34,9 @@ describe('Vacivitta interface', () => {
       } },
       { provide: TasksService, useValue: {
         list: vi.fn().mockResolvedValue([]),
+        listMine: vi.fn().mockResolvedValue([]),
         listAssignees: vi.fn().mockResolvedValue([]),
+        getById: vi.fn().mockResolvedValue({ status: 'unavailable' }),
         create: vi.fn(),
       } },
     ] });
@@ -48,6 +51,7 @@ describe('Vacivitta interface', () => {
     ['/quadros', 'Quadros'],
     ['/quadros/11111111-1111-4111-8111-111111111111', 'Quadro local'],
     ['/minhas-pendencias', 'Minhas Pendências'],
+    ['/pendencias/11111111-1111-4111-8111-111111111111', 'Pendência não encontrada ou sem acesso'],
     ['/chat', 'Chat'],
     ['/administracao', 'Administração'],
     ['/endereco-inexistente', 'Página não encontrada'],
@@ -75,7 +79,7 @@ describe('Vacivitta interface', () => {
     expect(harness.routeNativeElement?.querySelector('a[href="/inicio"]')).toBeNull();
   });
 
-  it.each(['/', '/inicio', '/quadros', '/quadros/rotina', '/minhas-pendencias', '/chat', '/administracao', '/endereco-inexistente'])
+  it.each(['/', '/inicio', '/quadros', '/quadros/rotina', '/minhas-pendencias', '/pendencias/11111111-1111-4111-8111-111111111111', '/chat', '/administracao', '/endereco-inexistente'])
   ('protects %s without a session', async (url) => {
     session.set(null);
     const harness = await RouterTestingHarness.create(url);
@@ -131,15 +135,11 @@ describe('Vacivitta interface', () => {
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain('Quadro local');
   });
 
-  it('filters only the demo user tasks by state', async () => {
+  it('shows the real empty state for my tasks without demo cards', async () => {
     const harness = await RouterTestingHarness.create('/minhas-pendencias');
-    expect(harness.routeNativeElement?.querySelectorAll('app-task-card').length).toBe(5);
-    const select = harness.routeNativeElement!.querySelector('select')!;
-    select.value = 'concluido';
-    select.dispatchEvent(new Event('change'));
     await harness.fixture.whenStable();
-    expect(harness.routeNativeElement?.querySelectorAll('app-task-card').length).toBe(1);
-    expect(harness.routeNativeElement?.textContent).toContain('Conferir lista de materiais');
+    expect(harness.routeNativeElement?.querySelectorAll('.task-card').length).toBe(0);
+    expect(harness.routeNativeElement?.textContent).toContain('Nenhuma pendência aberta');
   });
 
   it('selects a conversation and keeps sending disabled', async () => {

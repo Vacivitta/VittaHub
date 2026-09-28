@@ -71,6 +71,7 @@ describe('BoardPage', () => {
     expect(columns[1].textContent).toContain('Segunda pendência');
     expect(columns[1].textContent).toContain('Pessoa Um');
     expect(harness.routeNativeElement?.textContent).toContain('Aguardando aceite');
+    expect(columns[0].querySelector('.task-card-link')?.getAttribute('href')).toBe('/pendencias/task-1');
   });
 
   it('renders an empty state in every column when there are no tasks', async () => {

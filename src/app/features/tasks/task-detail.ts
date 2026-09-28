@@ -28,3 +28,12 @@ export interface CreateTaskInput {
   dueAt: string;
   isPrivate: boolean;
 }
+
+export interface TaskWithContext extends TaskDetail {
+  board: { id: string; title: string } | null;
+  column: { id: string; title: string } | null;
+}
+
+export type TaskResult =
+  | { status: 'loaded'; task: TaskWithContext }
+  | { status: 'unavailable' | 'error' };

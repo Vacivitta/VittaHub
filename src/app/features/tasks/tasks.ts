@@ -1,73 +1,85 @@
-import { Component, computed, signal } from '@angular/core';
-import { BOARDS, DEMO_USER, STATE_LABELS, TASKS } from '../../core/demo-data';
-import { PageHeading } from '../../shared/page-heading';
-import { TaskCard } from '../../shared/task-card';
+import { DatePipe } from '@angular/common';
+import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { PageHeading } from '../../shared/page-heading';
+import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
+import { TaskWithContext } from './task-detail';
+import { TasksService } from './tasks.service';
+
 @Component({
-  imports: [PageHeading, TaskCard, RouterLink],
+  imports: [PageHeading, RouterLink, DatePipe],
   template: `
     <app-page-heading
       title="Minhas Pendências"
-      description="Tudo o que está atribuído a você, com clareza sobre cada prazo."
+      description="Pendências abertas atribuídas a você, ordenadas pelo prazo."
     />
-    <div class="toolbar">
-      <label class="search-field"
-        >Buscar pendência<input
-          type="search"
-          placeholder="Busque pelo título"
-          [value]="query()"
-          (input)="query.set($any($event.target).value)" /></label
-      ><label
-        >Estado<select [value]="state()" (change)="state.set($any($event.target).value)">
-          <option value="">Todos os estados</option>
-          @for (entry of states; track entry.key) {
-            <option [value]="entry.key">{{ entry.label }}</option>
-          }
-        </select></label
-      >
-    </div>
-    <p class="small muted" aria-live="polite">
-      {{ filtered().length }} pendências · Pessoa Demo · Referência: 24/09/2026
-    </p>
-    <div class="tasks-grid">
-      @for (task of filtered(); track task.id) {
-        <div>
-          <app-task-card [task]="task" /><a
-            class="task-board-link"
-            [routerLink]="['/quadros', task.boardId]"
-            >{{ boardName(task.boardId) }} ↗</a
-          >
-        </div>
-      } @empty {
-        <div class="panel empty">
-          <h2>Nenhuma pendência encontrada</h2>
-          <p>Experimente limpar os filtros.</p>
-          <button type="button" (click)="clear()">Limpar filtros</button>
-        </div>
-      }
-    </div>
-    <p class="note">
-      Aceite, recusa, adiamento e conclusão não estão habilitados nesta etapa visual.
-    </p>
+    @if (loading()) {
+      <div class="panel empty" role="status">Carregando suas pendências…</div>
+    } @else if (error()) {
+      <section class="panel empty">
+        <h2>Não foi possível carregar suas pendências</h2>
+        <p role="alert">{{ error() }}</p>
+        <button type="button" (click)="load()">Tentar novamente</button>
+      </section>
+    } @else if (tasks().length) {
+      <p class="small muted" aria-live="polite">{{ tasks().length }} pendências abertas</p>
+      <div class="tasks-grid">
+        @for (task of tasks(); track task.id) {
+          <a class="task-card-link" [routerLink]="['/pendencias', task.id]" [attr.aria-label]="'Abrir pendência ' + task.title">
+            <article class="task-card">
+              <div class="row">
+                @if (task.is_private) { <span class="task-id">Privada</span> }
+                <span class="badge">{{ labels[task.business_state] }}</span>
+              </div>
+              <h2>{{ task.title }}</h2>
+              <p class="small muted">
+                {{ task.board?.title || 'Quadro indisponível' }}
+                @if (task.column?.title) { · {{ task.column?.title }} }
+              </p>
+              <div class="task-footer">
+                <span>{{ task.business_state === 'aguardando_aceite' ? 'Prazo após aceite' : 'Prazo' }}</span>
+                <span [class.overdue]="isOverdue(task)">
+                  {{ isOverdue(task) ? 'Vencido · ' : '' }}{{ task.due_at | date:'dd/MM/yyyy HH:mm' }}
+                </span>
+              </div>
+            </article>
+          </a>
+        }
+      </div>
+    } @else {
+      <section class="panel empty" role="status">
+        <h2>Nenhuma pendência aberta</h2>
+        <p>Você não possui pendências abertas atribuídas no momento.</p>
+      </section>
+    }
   `,
 })
 export class Tasks {
-  readonly query = signal('');
-  readonly state = signal('');
-  readonly states = Object.entries(STATE_LABELS).map(([key, label]) => ({ key, label }));
-  readonly filtered = computed(() =>
-    TASKS.filter(
-      (t) =>
-        t.assignee === DEMO_USER &&
-        (!this.state() || t.state === this.state()) &&
-        t.title.toLocaleLowerCase('pt-BR').includes(this.query().trim().toLocaleLowerCase('pt-BR')),
-    ),
-  );
-  boardName(id: string) {
-    return BOARDS.find((b) => b.id === id)?.title;
+  private readonly service = inject(TasksService);
+  readonly tasks = signal<TaskWithContext[]>([]);
+  readonly loading = signal(true);
+  readonly error = signal('');
+  readonly labels = BUSINESS_STATE_LABELS;
+
+  constructor() {
+    void this.load();
   }
-  clear() {
-    this.query.set('');
-    this.state.set('');
+
+  async load(): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      this.tasks.set(await this.service.listMine());
+    } catch {
+      this.error.set('Tente novamente em instantes.');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  isOverdue(task: TaskWithContext): boolean {
+    return task.business_state !== 'aguardando_aceite'
+      && task.business_state !== 'concluido'
+      && new Date(task.due_at).getTime() < Date.now();
   }
 }

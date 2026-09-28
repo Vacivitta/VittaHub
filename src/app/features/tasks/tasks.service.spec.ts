@@ -8,7 +8,7 @@ describe('TasksService', () => {
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
   const auth = { session, ready: Promise.resolve() };
   const returns = vi.fn();
-  const query = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), returns };
+  const query = { select: vi.fn(), eq: vi.fn(), neq: vi.fn(), order: vi.fn(), maybeSingle: vi.fn(), returns };
   const client = { from: vi.fn(), rpc: vi.fn() };
   const task = {
     id: 'task-1', board_id: 'board-1', column_id: 'column-1', title: 'Pendência real',
@@ -23,7 +23,9 @@ describe('TasksService', () => {
     client.rpc.mockReset();
     query.select.mockReset().mockReturnValue(query);
     query.eq.mockReset().mockReturnValue(query);
+    query.neq.mockReset().mockReturnValue(query);
     query.order.mockReset().mockReturnValue(query);
+    query.maybeSingle.mockReset();
     returns.mockReset().mockResolvedValue({ data: [task], error: null });
     TestBed.configureTestingModule({ providers: [
       { provide: AuthService, useValue: auth },
@@ -43,6 +45,30 @@ describe('TasksService', () => {
     client.rpc.mockResolvedValue({ data: people, error: null });
     expect(await TestBed.inject(TasksService).listAssignees('board-1')).toEqual(people);
     expect(client.rpc).toHaveBeenCalledExactlyOnceWith('list_board_assignees', { p_board_id: 'board-1' });
+  });
+
+  it('loads only open tasks assigned to the authenticated user in stable due-date order', async () => {
+    const mine = [{ ...task, assignee_id: 'user-1', board: { id: 'board-1', title: 'Quadro' }, column: null }];
+    returns.mockResolvedValue({ data: mine, error: null });
+    expect(await TestBed.inject(TasksService).listMine()).toEqual(mine);
+    expect(query.eq).toHaveBeenCalledExactlyOnceWith('assignee_id', 'user-1');
+    expect(query.neq).toHaveBeenCalledExactlyOnceWith('business_state', 'concluido');
+    expect(query.order.mock.calls).toEqual([
+      ['due_at', { ascending: true }], ['id', { ascending: true }],
+    ]);
+  });
+
+  it('loads one visible task by ID and keeps an absent task indistinguishable', async () => {
+    const detailed = { ...task, board: { id: 'board-1', title: 'Quadro' }, column: { id: 'column-1', title: 'Entrada' } };
+    query.maybeSingle.mockResolvedValueOnce({ data: detailed, error: null, status: 200 });
+    expect(await TestBed.inject(TasksService).getById('11111111-1111-4111-8111-111111111111')).toEqual({ status: 'loaded', task: detailed });
+    query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 });
+    expect(await TestBed.inject(TasksService).getById('22222222-2222-4222-8222-222222222222')).toEqual({ status: 'unavailable' });
+  });
+
+  it('does not query malformed task IDs', async () => {
+    expect(await TestBed.inject(TasksService).getById('inexistente')).toEqual({ status: 'unavailable' });
+    expect(client.from).not.toHaveBeenCalled();
   });
 
   it('creates through the controlled RPC without creator or state fields', async () => {
