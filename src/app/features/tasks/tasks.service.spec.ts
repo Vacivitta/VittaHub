@@ -66,6 +66,33 @@ describe('TasksService', () => {
     expect(await TestBed.inject(TasksService).getById('22222222-2222-4222-8222-222222222222')).toEqual({ status: 'unavailable' });
   });
 
+  it('loads immutable task history in stable chronological order', async () => {
+    const events = [{ id: 'event-1', task_id: 'task-1', event_type: 'accepted', content: 'Pendência aceita',
+      actor_id: 'user-1', is_system: true, created_at: '2026-09-28T12:00:00Z' }];
+    returns.mockResolvedValue({ data: events, error: null });
+    expect(await TestBed.inject(TasksService).listHistory('task-1')).toEqual(events);
+    expect(client.from).toHaveBeenCalledExactlyOnceWith('task_events');
+    expect(query.eq).toHaveBeenCalledExactlyOnceWith('task_id', 'task-1');
+    expect(query.order.mock.calls).toEqual([
+      ['created_at', { ascending: true }], ['id', { ascending: true }],
+    ]);
+  });
+
+  it.each([
+    ['accept', 'accept_task'], ['start', 'start_task'], ['complete', 'complete_task'],
+  ] as const)('%s uses only its controlled RPC', async (method, rpc) => {
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    await TestBed.inject(TasksService)[method]('task-1');
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith(rpc, { p_task_id: 'task-1' });
+  });
+
+  it('hides transition database errors', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: { message: 'private detail' } });
+    await expect(TestBed.inject(TasksService).accept('task-1')).rejects.toThrow(
+      'Não foi possível atualizar a pendência. Tente novamente.',
+    );
+  });
+
   it('does not query malformed task IDs', async () => {
     expect(await TestBed.inject(TasksService).getById('inexistente')).toEqual({ status: 'unavailable' });
     expect(client.from).not.toHaveBeenCalled();

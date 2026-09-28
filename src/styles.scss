@@ -526,6 +526,9 @@ h3 {
   gap: 8px;
   padding-top: 28px;
 }
+.privacy-note {
+  margin: 0;
+}
 .checkbox-field input {
   width: auto;
   margin: 0;
@@ -605,6 +608,27 @@ h3 {
 }
 .task-detail-grid dd {
   margin: 0;
+}
+.task-action {
+  margin: 0 0 18px;
+}
+.action-feedback {
+  color: var(--green);
+  font-weight: 600;
+}
+.task-history-panel {
+  padding: 26px;
+  margin-top: 20px;
+}
+.history-entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.history-entry strong {
+  font-size: 13px;
 }
 .empty {
   padding: 40px 24px;

@@ -210,3 +210,17 @@ de pendências é incremental, preparada somente para revisão e ainda não apli
   para impedir novas atribuições a usuários inativos. Fluxos de ativação e inativação
   permanecem administrativos e fora desta tarefa.
 - INSERT direto, UPDATE e DELETE de `tasks` continuam indisponíveis para a aplicação.
+
+## 15. Decisões aprovadas — Tarefa 11 (28/09/2026)
+
+- O fluxo essencial implementa exclusivamente `aguardando_aceite → a_fazer → fazendo → concluido`.
+- Aceite, início e conclusão são operações controladas do responsável atual. Não foi
+  concedida permissão administrativa adicional para conclusão, pois essa autorização
+  não estava aprovada de forma inequívoca.
+- Identidade, timestamps e estados de destino são definidos pelo banco. UPDATE genérico
+  e DELETE de pendências continuam bloqueados.
+- Aceite e conclusão registram timestamps próprios. Todas as três ações registram
+  eventos de sistema imutáveis com pendência, tipo, conteúdo, ator e instante.
+- A mudança do estado de negócio não modifica a coluna Kanban.
+- Adiamento, `aguardando_terceiro`, recusa, reabertura e comentários manuais permanecem
+  fora desta entrega.

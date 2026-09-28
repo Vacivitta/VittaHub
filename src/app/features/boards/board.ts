@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { PageHeading } from '../../shared/page-heading';
+import { AuthService } from '../../core/auth/auth.service';
 import { BoardAssignee, TaskDetail } from '../tasks/task-detail';
 import { TasksService } from '../tasks/tasks.service';
 import { BoardResult, BUSINESS_STATE_LABELS } from './board-detail';
@@ -45,7 +46,7 @@ import { BoardsService } from './boards.service';
               <textarea formControlName="description" rows="3"></textarea>
             </label>
             <label>Responsável
-              <select formControlName="assigneeId">
+              <select formControlName="assigneeId" (change)="assigneeChanged()">
                 <option value="">Selecione</option>
                 @for (person of assignees(); track person.id) {
                   <option [value]="person.id">{{ person.display_name || 'Participante sem nome' }}</option>
@@ -75,6 +76,9 @@ import { BoardsService } from './boards.service';
             <label class="checkbox-field">
               <input type="checkbox" formControlName="isPrivate" /> Pendência privada
             </label>
+            @if (assignedToAnother()) {
+              <p class="small muted privacy-note">Pendências atribuídas a outra pessoa são compartilhadas.</p>
+            }
             @if (creationError()) {
               <p class="form-error" role="alert">{{ creationError() }}</p>
             }
@@ -154,6 +158,7 @@ import { BoardsService } from './boards.service';
 export class BoardPage {
   private readonly boardsService = inject(BoardsService);
   private readonly tasksService = inject(TasksService);
+  private readonly auth = inject(AuthService);
   private readonly params = toSignal(inject(ActivatedRoute).paramMap);
   private readonly attempt = signal(0);
   readonly result = signal<BoardResult | { status: 'loading' }>({ status: 'loading' });
@@ -229,12 +234,27 @@ export class BoardPage {
     const board = this.board();
     if (!board?.columns.length || !this.assignees().length) return;
     this.creationError.set('');
+    this.form.controls.isPrivate.enable();
     this.form.reset({ title: '', description: '', assigneeId: '', dueAt: '', columnId: board.columns[0].id, isPrivate: false });
     this.formOpen.set(true);
   }
 
   closeForm(): void {
     if (!this.creating()) this.formOpen.set(false);
+  }
+
+  assignedToAnother(): boolean {
+    const assigneeId = this.form.controls.assigneeId.value;
+    return !!assigneeId && assigneeId !== this.auth.session()?.user.id;
+  }
+
+  assigneeChanged(): void {
+    if (this.assignedToAnother()) {
+      this.form.controls.isPrivate.setValue(false);
+      this.form.controls.isPrivate.disable();
+    } else {
+      this.form.controls.isPrivate.enable();
+    }
   }
 
   async createTask(): Promise<void> {

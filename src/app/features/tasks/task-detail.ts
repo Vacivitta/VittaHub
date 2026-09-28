@@ -12,6 +12,8 @@ export interface TaskDetail {
   business_state: BusinessState;
   is_private: boolean;
   created_at: string;
+  accepted_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface BoardAssignee {
@@ -37,3 +39,13 @@ export interface TaskWithContext extends TaskDetail {
 export type TaskResult =
   | { status: 'loaded'; task: TaskWithContext }
   | { status: 'unavailable' | 'error' };
+
+export interface TaskEvent {
+  id: string;
+  task_id: string;
+  event_type: string;
+  content: string;
+  actor_id: string;
+  is_system: boolean;
+  created_at: string;
+}

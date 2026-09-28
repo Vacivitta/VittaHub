@@ -83,7 +83,7 @@ select is((select count(*)::integer from public.profiles), 1,
 
 select lives_ok($$select public.create_task(
   '93000000-0000-4000-8000-000000000001','94000000-0000-4000-8000-000000000001',
-  '  Pendência própria  ','91000000-0000-4000-8000-000000000001','2030-01-10 12:00+00',false,'  Descrição  ')$$,
+  '  Pendência própria  ','91000000-0000-4000-8000-000000000001','2030-01-10 12:00+00',true,'  Descrição  ')$$,
   'valid self-assigned task is created');
 select is((select business_state::text from public.tasks where title='Pendência própria'),
   'a_fazer', 'self-assigned task starts in a_fazer');
@@ -91,6 +91,8 @@ select is((select created_by from public.tasks where title='Pendência própria'
   '91000000-0000-4000-8000-000000000001'::uuid, 'created_by comes from authenticated identity');
 select is((select description from public.tasks where title='Pendência própria'),
   'Descrição', 'optional description is stored after trimming');
+select ok((select is_private from public.tasks where title='Pendência própria'),
+  'self-assigned task keeps requested privacy');
 
 select lives_ok($$select public.create_task(
   '93000000-0000-4000-8000-000000000001','94000000-0000-4000-8000-000000000001',
@@ -100,6 +102,8 @@ select is((select business_state::text from public.tasks where title='Pendência
   'aguardando_aceite', 'task assigned to another user starts awaiting acceptance');
 select is((select created_by from public.tasks where title='Pendência atribuída'),
   '91000000-0000-4000-8000-000000000001'::uuid, 'other assignment cannot forge creator');
+select ok((select not is_private from public.tasks where title='Pendência atribuída'),
+  'task assigned to another user is normalized to shared');
 select ok(not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname='public' and p.proname='create_task' and p.pronargs <> 7),
   'no overload permits choosing creator or initial state');
@@ -131,10 +135,10 @@ select throws_ok($$delete from public.tasks where title='Pendência própria'$$,
   '42501', null::text, 'DELETE remains blocked');
 
 select set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000003',true);
-select is((select count(*)::integer from public.tasks where title='Pendência própria'), 1,
-  'existing RLS still shows a public task to a board participant');
-select is((select count(*)::integer from public.tasks where title='Pendência atribuída'), 0,
-  'existing privacy RLS hides a private task from an unrelated participant');
+select is((select count(*)::integer from public.tasks where title='Pendência própria'), 0,
+  'existing RLS hides a private self-assigned task from an unrelated participant');
+select is((select count(*)::integer from public.tasks where title='Pendência atribuída'), 1,
+  'unrelated board participant sees task normalized to shared');
 
 select set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000004',true);
 select throws_ok($$select * from public.list_board_assignees('93000000-0000-4000-8000-000000000001')$$,
@@ -148,7 +152,7 @@ select set_config('request.jwt.claim.sub','91000000-0000-4000-8000-000000000005'
 select is((select count(*)::integer from public.list_board_assignees('93000000-0000-4000-8000-000000000001')),
   3, 'global administrator can use bounded lookup without membership');
 select is((select count(*)::integer from public.tasks where title='Pendência atribuída'), 1,
-  'global administrator retains approved private task access');
+  'global administrator sees task normalized to shared');
 
 reset role;
 delete from public.board_memberships

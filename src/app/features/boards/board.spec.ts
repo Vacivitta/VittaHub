@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { TasksService } from '../tasks/tasks.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { BoardPage } from './board';
 import { BoardDetail, BoardResult } from './board-detail';
 import { BoardsService } from './boards.service';
@@ -12,6 +14,7 @@ describe('BoardPage', () => {
   const list = vi.fn();
   const listAssignees = vi.fn();
   const create = vi.fn();
+  const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
   const board: BoardDetail = {
     id, title: 'Quadro de Testes', description: 'Descrição local', department: { name: 'Departamento de Testes' },
     columns: [
@@ -29,6 +32,7 @@ describe('BoardPage', () => {
   ];
 
   beforeEach(() => {
+    session.set({ user: { id: 'user-1' } });
     getById.mockReset().mockResolvedValue({ status: 'loaded', board });
     list.mockReset().mockResolvedValue(tasks);
     listAssignees.mockReset().mockResolvedValue([
@@ -39,6 +43,7 @@ describe('BoardPage', () => {
       provideRouter([{ path: 'quadros/:id', component: BoardPage }]),
       { provide: BoardsService, useValue: { getById } },
       { provide: TasksService, useValue: { list, listAssignees, create } },
+      { provide: AuthService, useValue: { session } },
     ] });
   });
 
@@ -81,12 +86,47 @@ describe('BoardPage', () => {
     expect(harness.routeNativeElement?.textContent).toContain('Nenhuma pendência nesta coluna.');
   });
 
+  it('reflects a refreshed business state without moving the card column', async () => {
+    list.mockResolvedValue([{ ...tasks[0], business_state: 'fazendo', column_id: 'column-1' }]);
+    const harness = await render();
+    const columns = harness.routeNativeElement!.querySelectorAll('.kanban-column');
+    expect(columns[0].textContent).toContain('Fazendo');
+    expect(columns[0].textContent).toContain('Primeira pendência');
+    expect(columns[1].textContent).not.toContain('Primeira pendência');
+  });
+
   it('opens the creation form and defaults the first column', async () => {
     const harness = await render();
     harness.routeNativeElement!.querySelector<HTMLButtonElement>('.board-info button')!.click();
     harness.detectChanges();
     expect(harness.routeNativeElement?.querySelector('[aria-label="Nova pendência"]')).not.toBeNull();
     expect(harness.routeNativeElement?.querySelector<HTMLSelectElement>('select[formControlName="columnId"]')?.value).toBe('column-1');
+  });
+
+  it('keeps privacy available for self-assignment', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    page.openForm();
+    page.form.controls.assigneeId.setValue('user-1');
+    page.assigneeChanged();
+    page.form.controls.isPrivate.setValue(true);
+    harness.detectChanges();
+    expect(page.form.controls.isPrivate.enabled).toBe(true);
+    expect(page.form.controls.isPrivate.value).toBe(true);
+    expect(harness.routeNativeElement?.textContent).not.toContain('são compartilhadas');
+  });
+
+  it('clears and disables privacy when assigned to another user', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    page.openForm();
+    page.form.controls.isPrivate.setValue(true);
+    page.form.controls.assigneeId.setValue('user-2');
+    page.assigneeChanged();
+    harness.detectChanges();
+    expect(page.form.controls.isPrivate.disabled).toBe(true);
+    expect(page.form.controls.isPrivate.value).toBe(false);
+    expect(harness.routeNativeElement?.textContent).toContain('Pendências atribuídas a outra pessoa são compartilhadas.');
   });
 
   it('validates required fields before creating', async () => {
@@ -119,6 +159,9 @@ describe('BoardPage', () => {
     expect(create.mock.calls[0][0]).toMatchObject({ boardId: id, columnId: 'column-2', assigneeId: 'user-2' });
     expect(list).toHaveBeenCalledTimes(2);
     expect(harness.routeNativeElement?.textContent).toContain('Pendência recém-criada');
+    const createdCard = Array.from(harness.routeNativeElement!.querySelectorAll('.task-card'))
+      .find((card) => card.textContent?.includes('Pendência recém-criada'));
+    expect(createdCard?.textContent).toContain('Compartilhada');
     expect(harness.routeNativeElement?.querySelector('[aria-label="Nova pendência"]')).toBeNull();
   });
 

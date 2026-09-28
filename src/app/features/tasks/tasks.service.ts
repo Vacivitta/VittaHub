@@ -1,9 +1,10 @@
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
-import { BoardAssignee, CreateTaskInput, TaskDetail, TaskResult, TaskWithContext } from './task-detail';
+import { BoardAssignee, CreateTaskInput, TaskDetail, TaskEvent, TaskResult, TaskWithContext } from './task-detail';
 
-const TASK_WITH_CONTEXT_SELECT = 'id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at, board:boards!tasks_board_id_fkey(id, title), column:board_columns!tasks_board_column_fkey(id, title)';
+const TASK_FIELDS = 'id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at, accepted_at, completed_at';
+const TASK_WITH_CONTEXT_SELECT = `${TASK_FIELDS}, board:boards!tasks_board_id_fkey(id, title), column:board_columns!tasks_board_column_fkey(id, title)`;
 
 @Injectable({ providedIn: 'root' })
 export class TasksService {
@@ -14,7 +15,7 @@ export class TasksService {
     const userId = await this.authenticatedUser();
     try {
       const { data, error } = await this.client.from('tasks')
-        .select('id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at')
+        .select(TASK_FIELDS)
         .eq('board_id', boardId)
         .order('created_at', { ascending: true })
         .returns<TaskDetail[]>();
@@ -76,6 +77,34 @@ export class TasksService {
     }
   }
 
+  async listHistory(taskId: string): Promise<TaskEvent[]> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.from('task_events')
+        .select('id, task_id, event_type, content, actor_id, is_system, created_at')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .returns<TaskEvent[]>();
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      return data ?? [];
+    } catch {
+      throw new Error('Não foi possível carregar o histórico da pendência.');
+    }
+  }
+
+  accept(taskId: string): Promise<void> {
+    return this.transition('accept_task', taskId);
+  }
+
+  start(taskId: string): Promise<void> {
+    return this.transition('start_task', taskId);
+  }
+
+  complete(taskId: string): Promise<void> {
+    return this.transition('complete_task', taskId);
+  }
+
   async create(input: CreateTaskInput): Promise<string> {
     const userId = await this.authenticatedUser();
     try {
@@ -100,5 +129,15 @@ export class TasksService {
     const userId = this.auth.session()?.user.id;
     if (!userId) throw new Error('Sessão inválida.');
     return userId;
+  }
+
+  private async transition(rpc: 'accept_task' | 'start_task' | 'complete_task', taskId: string): Promise<void> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { error } = await this.client.rpc(rpc, { p_task_id: taskId });
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+    } catch {
+      throw new Error('Não foi possível atualizar a pendência. Tente novamente.');
+    }
   }
 }
