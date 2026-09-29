@@ -93,8 +93,8 @@ select throws_ok($$select public.create_board('Forbidden','20000000-0000-4000-80
  '42501', null::text, 'RPC denies unauthorized creation');
 select throws_ok($$insert into public.board_memberships(board_id,user_id) values
  ('30000000-0000-4000-8000-000000000001',auth.uid())$$, '42501', null::text, 'cannot self-enroll');
-select results_eq($$update public.boards set title='Hacked' where id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select null::uuid where false$$, 'guessed UUID cannot edit hidden board');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000001','Hacked',null)$$,
+ '42501', null::text, 'guessed UUID cannot edit hidden board');
 select results_eq($$delete from public.board_memberships where board_id='30000000-0000-4000-8000-000000000001' returning user_id$$,
  $$select null::uuid where false$$, 'outsider cannot remove participants');
 
@@ -131,18 +131,17 @@ select lives_ok($$select public.create_board('Admin created','20000000-0000-4000
 select lives_ok($$insert into public.board_memberships(board_id,user_id) values
  ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000003')$$,
  'system administrator adds participant from other department');
-select results_eq($$update public.boards set description='Global admin edit'
- where id='30000000-0000-4000-8000-000000000002' returning id$$,
- $$select '30000000-0000-4000-8000-000000000002'::uuid$$, 'global administrator edits without membership');
+select lives_ok($$select public.update_board('30000000-0000-4000-8000-000000000002','Board B','Global admin edit')$$,
+ 'global administrator edits without membership');
 
--- Creator administers own board and uses the atomic creation RPC.
-select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
-select is((select count(*)::integer from public.board_creation_authorizations), 1, 'user sees own creation authorization only');
+-- Authorized administrator uses the atomic creation RPC.
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000004', true);
 select lives_ok($$select public.create_board('Created via RPC','20000000-0000-4000-8000-000000000001')$$,
- 'authorized member creates board');
+ 'authorized administrator creates board');
 select is((select created_by from public.boards where title='Created via RPC'), auth.uid(), 'RPC fixes creator identity');
 select ok((select m.is_board_admin from public.board_memberships m join public.boards b on b.id=m.board_id
  where b.title='Created via RPC' and m.user_id=auth.uid()), 'RPC returns with creator admin membership already present');
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select throws_ok($$insert into public.boards(title,department_id) values('Bypass','20000000-0000-4000-8000-000000000001')$$,
  '42501', null::text, 'even authorized creator cannot bypass RPC');
 select throws_ok($$insert into public.boards(title,department_id,created_by) values
@@ -152,9 +151,8 @@ select throws_ok($$update public.boards set created_by='10000000-0000-4000-8000-
  '42501', null::text, 'creator cannot transfer authorship');
 select throws_ok($$update public.boards set department_id='20000000-0000-4000-8000-000000000002'$$,
  '42501', null::text, 'board department transfer not exposed');
-select results_eq($$update public.boards set description='Creator edit'
- where id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select '30000000-0000-4000-8000-000000000001'::uuid$$, 'creator can edit own board');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000001','Board A','Creator edit')$$,
+ '42501', null::text, 'member creator cannot edit board structure');
 select lives_ok($$insert into public.board_memberships(board_id,user_id) values
  ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002')$$,
  'board administrator can add participant');
@@ -167,11 +165,12 @@ select throws_ok($$insert into public.board_memberships(board_id,user_id,added_b
 select throws_ok($$insert into public.board_memberships(board_id,user_id,is_board_admin) values
  ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000005',true)$$,
  '42501', null::text, 'direct admin assignment bypassing RPC blocked');
-select lives_ok($$insert into public.board_columns(board_id,title,position,business_state) values
- ('30000000-0000-4000-8000-000000000001','A fazer',1,'a_fazer')$$, 'creator creates linked column');
-select results_eq($$update public.board_columns set title='Revised',business_state=null
- where id='40000000-0000-4000-8000-000000000001' returning id$$,
- $$select '40000000-0000-4000-8000-000000000001'::uuid$$, 'creator edits organizational column');
+select throws_ok($$insert into public.board_columns(board_id,title,position,business_state) values
+ ('30000000-0000-4000-8000-000000000001','A fazer',1,'a_fazer')$$,
+ '42501', null::text, 'member board administrator cannot create columns directly');
+select throws_ok($$update public.board_columns set title='Revised',business_state=null
+ where id='40000000-0000-4000-8000-000000000001'$$,
+ '42501', null::text, 'member board administrator cannot rename columns directly');
 select throws_ok($$update public.board_columns set board_id='30000000-0000-4000-8000-000000000002'$$,
  '42501', null::text, 'column cannot be moved between boards');
 select throws_ok($$insert into public.board_columns(board_id,title,position) values
@@ -182,12 +181,12 @@ select throws_ok('delete from public.board_columns', '42501', null::text, 'colum
 -- Participation grants view, not administration, even for a gestor.
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000003', true);
 select is((select count(*)::integer from public.boards), 1, 'authorized cross-department participant sees board');
-select is((select count(*)::integer from public.board_columns), 2, 'cross-department participant sees columns');
+select is((select count(*)::integer from public.board_columns), 1, 'cross-department participant sees columns');
 select is((select count(*)::integer from public.departments), 2, 'own and accessible board departments visible');
-select results_eq($$update public.boards set title='Forbidden edit' where id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select null::uuid where false$$, 'participant cannot edit board');
-select results_eq($$update public.board_columns set title='Forbidden edit' where board_id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select null::uuid where false$$, 'participant cannot edit columns');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000001','Forbidden edit',null)$$,
+ '42501', null::text, 'participant cannot edit board');
+select throws_ok($$update public.board_columns set title='Forbidden edit' where board_id='30000000-0000-4000-8000-000000000001'$$,
+ '42501', null::text, 'participant cannot edit columns');
 select throws_ok($$insert into public.board_columns(board_id,title,position) values
  ('30000000-0000-4000-8000-000000000001','Forbidden',2)$$, '42501', null::text, 'participant cannot create columns');
 select throws_ok($$insert into public.board_memberships(board_id,user_id) values
@@ -260,12 +259,12 @@ select is((select count(*)::integer from public.board_memberships m left join pu
 -- Global administration includes columns; creator removal has no authorship bypass.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000004', true);
-select lives_ok($$insert into public.board_columns(board_id,title,position) values
- ('30000000-0000-4000-8000-000000000002','Global admin column',1)$$,
+select lives_ok($$select public.create_board_column(
+ '30000000-0000-4000-8000-000000000002','Global admin column')$$,
  'system administrator creates column without membership');
-select results_eq($$update public.board_columns set title='Global edit'
- where id='40000000-0000-4000-8000-000000000002' returning id$$,
- $$select '40000000-0000-4000-8000-000000000002'::uuid$$, 'system administrator edits column without membership');
+select lives_ok($$select public.rename_board_column(
+ '40000000-0000-4000-8000-000000000002','Global edit')$$,
+ 'system administrator edits column without membership');
 select throws_ok($$insert into public.board_memberships(board_id,user_id) values
  ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000006')$$,
  '23503', null::text, 'participant requires provisioned profile');
@@ -277,9 +276,8 @@ select ok(exists(select 1 from public.boards where id='30000000-0000-4000-8000-0
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select is((select count(*)::integer from public.boards where id='30000000-0000-4000-8000-000000000001'),
  0, 'removed creator has no perpetual authorship access');
-select results_eq($$update public.boards set title='Removed creator edit'
- where id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select null::uuid where false$$, 'removed creator cannot administer');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000001','Removed creator edit',null)$$,
+ '42501', null::text, 'removed creator cannot administer');
 select throws_ok($$insert into public.board_memberships(board_id,user_id) values
  ('30000000-0000-4000-8000-000000000001',auth.uid())$$, '42501', null::text, 'removed creator cannot restore own membership');
 reset role;
@@ -336,9 +334,8 @@ select is((select added_by from public.board_memberships where board_id='3000000
  and user_id='10000000-0000-4000-8000-000000000002'), auth.uid(), 'promotion preserves original membership grantor');
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 select is((select role::text from public.profiles), 'membro', 'local promotion does not change application role');
-select results_eq($$update public.boards set description='Promoted admin edit'
- where id='30000000-0000-4000-8000-000000000002' returning id$$,
- $$select '30000000-0000-4000-8000-000000000002'::uuid$$, 'promoted admin can administer board');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000002','Board B','Promoted admin edit')$$,
+ '42501', null::text, 'member promoted locally cannot edit board structure');
 select lives_ok($$select public.promote_board_member('30000000-0000-4000-8000-000000000002',
  '10000000-0000-4000-8000-000000000003')$$, 'promoted administrator can promote another participant');
 select throws_ok('update public.board_memberships set is_board_admin=false', '42501', null::text,
@@ -360,9 +357,8 @@ select ok((select is_board_admin from public.board_memberships where board_id='3
 select throws_ok('update public.board_memberships set is_board_admin=false', '42501', null::text,
  'global administrator cannot use unapproved demotion');
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
-select results_eq($$update public.boards set description='Recovered admin edit'
- where id='30000000-0000-4000-8000-000000000001' returning id$$,
- $$select '30000000-0000-4000-8000-000000000001'::uuid$$, 'recovered admin has effective authority');
+select throws_ok($$select public.update_board('30000000-0000-4000-8000-000000000001','Board A','Recovered admin edit')$$,
+ '42501', null::text, 'member recovered locally cannot edit board structure');
 select results_eq($$delete from public.board_memberships where board_id='30000000-0000-4000-8000-000000000001'
  and user_id=auth.uid() returning user_id$$, $$select '10000000-0000-4000-8000-000000000002'::uuid$$,
  'last local administrator may remove own participation');
@@ -388,12 +384,12 @@ select is((select department_id from public.boards where title='Global other dep
  '20000000-0000-4000-8000-000000000001'::uuid, 'global department choice preserved');
 select is((select created_by from public.boards where title='Global other department'), auth.uid(), 'global exception preserves authorship');
 select throws_ok($$select public.create_board('Invalid department','20000000-0000-4000-8000-000000000099')$$,
- '23503', null::text, 'global department must exist');
+ '42501', null::text, 'global department must exist');
 select throws_ok($$select public.create_board('Null department',null)$$,
  '42501', null::text, 'null department rejected');
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
-select lives_ok($$select public.create_board('Member own department','20000000-0000-4000-8000-000000000001')$$,
- 'authorized member creates in own department');
+select throws_ok($$select public.create_board('Member own department','20000000-0000-4000-8000-000000000001')$$,
+ '42501', null::text, 'member cannot create boards even when previously authorized');
 select throws_ok($$select public.create_board('Member wrong department','20000000-0000-4000-8000-000000000002')$$,
  '42501', null::text, 'board admin status and forged metadata do not grant cross-department creation');
 select is((select count(*)::integer from public.boards where title='Member wrong department'), 0, 'rejected creation leaves no board');

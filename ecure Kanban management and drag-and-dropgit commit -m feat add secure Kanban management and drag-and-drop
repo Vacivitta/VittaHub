@@ -1,0 +1,20 @@
+package-lock.json
+package.json
+src/app/app.spec.ts
+src/app/features/boards/board-summary.ts
+src/app/features/boards/board.spec.ts
+src/app/features/boards/board.ts
+src/app/features/boards/boards.service.spec.ts
+src/app/features/boards/boards.service.ts
+src/app/features/boards/boards.spec.ts
+src/app/features/boards/boards.ts
+src/app/features/tasks/tasks.service.spec.ts
+src/app/features/tasks/tasks.service.ts
+src/app/shared/icon.ts
+src/styles.scss
+supabase/migrations/20260929120000_board_management_drag_drop.sql
+supabase/migrations/20260929150000_board_edit_safe_deletion.sql
+supabase/snippets/Untitled query 564.sql
+supabase/tests/board_edit_safe_deletion.test.sql
+supabase/tests/board_management_drag_drop.test.sql
+supabase/tests/identity_kanban_foundation.test.sql

@@ -8,35 +8,56 @@ describe('BoardsService', () => {
   const session = signal<{ user: { id: string } } | null>(null);
   const auth = { session, ready: Promise.resolve() };
   const result = vi.fn();
-  const query = { select: vi.fn(), order: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(), returns: result };
-  const client = { from: vi.fn() };
-  const boards = [{ id: 'board-1', title: 'Quadro local', description: null, department: { name: 'Equipe' } }];
+  const query = {
+    select: vi.fn(),
+    order: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn(),
+    returns: result,
+  };
+  const client = { from: vi.fn(), rpc: vi.fn() };
+  const boards = [
+    {
+      id: 'board-1',
+      title: 'Quadro local',
+      description: null,
+      created_at: '2026-09-29T13:42:00Z',
+      department: { name: 'Equipe' },
+    },
+  ];
 
   beforeEach(() => {
     session.set({ user: { id: 'user-1' } });
     auth.ready = Promise.resolve();
     client.from.mockReset().mockReturnValue(query);
+    client.rpc.mockReset();
     query.select.mockReset().mockReturnValue(query);
     query.order.mockReset().mockReturnValue(query);
     query.eq.mockReset().mockReturnValue(query);
     query.maybeSingle.mockReset();
     result.mockReset().mockResolvedValue({ data: boards, error: null });
-    TestBed.configureTestingModule({ providers: [
-      { provide: AuthService, useValue: auth },
-      { provide: SUPABASE_CLIENT, useValue: client },
-    ] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: auth },
+        { provide: SUPABASE_CLIENT, useValue: client },
+      ],
+    });
   });
 
   it('reads boards and their department without imposing membership or department filters', async () => {
     expect(await TestBed.inject(BoardsService).list()).toEqual(boards);
     expect(client.from).toHaveBeenCalledExactlyOnceWith('boards');
-    expect(query.select).toHaveBeenCalledExactlyOnceWith('id, title, description, department:departments(name)');
+    expect(query.select).toHaveBeenCalledExactlyOnceWith(
+      'id, title, description, created_at, department:departments(name)',
+    );
     expect(query.order).toHaveBeenCalledExactlyOnceWith('title', { ascending: true });
   });
 
   it('waits for the existing session restoration before querying', async () => {
     let restore!: () => void;
-    auth.ready = new Promise<void>((resolve) => { restore = resolve; });
+    auth.ready = new Promise<void>((resolve) => {
+      restore = resolve;
+    });
     const pending = TestBed.inject(BoardsService).list();
     expect(client.from).not.toHaveBeenCalled();
     restore();
@@ -45,7 +66,9 @@ describe('BoardsService', () => {
 
   it('does not query without an authenticated session', async () => {
     session.set(null);
-    await expect(TestBed.inject(BoardsService).list()).rejects.toThrow('Não foi possível carregar os quadros.');
+    await expect(TestBed.inject(BoardsService).list()).rejects.toThrow(
+      'Não foi possível carregar os quadros.',
+    );
     expect(client.from).not.toHaveBeenCalled();
   });
 
@@ -67,13 +90,19 @@ describe('BoardsService', () => {
       session.set({ user: { id: 'user-2' } });
       return { data: boards, error: null };
     });
-    await expect(TestBed.inject(BoardsService).list()).rejects.toThrow('Não foi possível carregar os quadros.');
+    await expect(TestBed.inject(BoardsService).list()).rejects.toThrow(
+      'Não foi possível carregar os quadros.',
+    );
   });
 
   describe('getById', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     const board = {
-      id, title: 'Quadro de Testes', description: null, department: { name: 'Departamento de Testes' },
+      id,
+      title: 'Quadro de Testes',
+      description: null,
+      created_at: '2026-09-29T13:42:00Z',
+      department: { name: 'Departamento de Testes' },
       columns: [
         { id: 'column-1', title: 'Entrada', position: 0, business_state: null },
         { id: 'column-2', title: 'Execução', position: 1, business_state: 'fazendo' },
@@ -88,15 +117,20 @@ describe('BoardsService', () => {
       expect(await TestBed.inject(BoardsService).getById(id)).toEqual({ status: 'loaded', board });
       expect(client.from).toHaveBeenCalledExactlyOnceWith('boards');
       expect(query.select).toHaveBeenCalledExactlyOnceWith(
-        'id, title, description, department:departments(name), columns:board_columns(id, title, position, business_state)',
+        'id, title, description, created_at, department:departments(name), columns:board_columns(id, title, position, business_state)',
       );
       expect(query.eq).toHaveBeenCalledExactlyOnceWith('id', id);
-      expect(query.order).toHaveBeenCalledExactlyOnceWith('position', { referencedTable: 'columns', ascending: true });
+      expect(query.order).toHaveBeenCalledExactlyOnceWith('position', {
+        referencedTable: 'columns',
+        ascending: true,
+      });
     });
 
     it('waits for session restoration and rejects an absent session', async () => {
       let restore!: () => void;
-      auth.ready = new Promise<void>((resolve) => { restore = resolve; });
+      auth.ready = new Promise<void>((resolve) => {
+        restore = resolve;
+      });
       session.set(null);
       const pending = TestBed.inject(BoardsService).getById(id);
       expect(client.from).not.toHaveBeenCalled();
@@ -106,9 +140,14 @@ describe('BoardsService', () => {
     });
 
     it('keeps a board without columns instead of treating it as missing', async () => {
-      query.maybeSingle.mockResolvedValue({ data: { ...board, columns: [] }, error: null, status: 200 });
+      query.maybeSingle.mockResolvedValue({
+        data: { ...board, columns: [] },
+        error: null,
+        status: 200,
+      });
       expect(await TestBed.inject(BoardsService).getById(id)).toEqual({
-        status: 'loaded', board: { ...board, columns: [] },
+        status: 'loaded',
+        board: { ...board, columns: [] },
       });
     });
 
@@ -118,7 +157,9 @@ describe('BoardsService', () => {
     });
 
     it('does not query malformed IDs', async () => {
-      expect(await TestBed.inject(BoardsService).getById('rotina')).toEqual({ status: 'unavailable' });
+      expect(await TestBed.inject(BoardsService).getById('rotina')).toEqual({
+        status: 'unavailable',
+      });
       expect(client.from).not.toHaveBeenCalled();
     });
 
@@ -127,7 +168,11 @@ describe('BoardsService', () => {
       [400, '42501', 'forbidden'],
       [500, 'unknown', 'error'],
     ])('handles HTTP %s / code %s without leaking details', async (status, code, expected) => {
-      query.maybeSingle.mockResolvedValue({ data: null, error: { code, message: 'private details' }, status });
+      query.maybeSingle.mockResolvedValue({
+        data: null,
+        error: { code, message: 'private details' },
+        status,
+      });
       expect(await TestBed.inject(BoardsService).getById(id)).toEqual({ status: expected });
     });
 
@@ -143,5 +188,66 @@ describe('BoardsService', () => {
       });
       expect(await TestBed.inject(BoardsService).getById(id)).toEqual({ status: 'forbidden' });
     });
+  });
+
+  it('loads board creation context and creates through the controlled RPC', async () => {
+    client.rpc.mockResolvedValueOnce({
+      data: [{ role: 'gestor', department_id: 'department-1', can_create: true }],
+      error: null,
+    });
+    expect(await TestBed.inject(BoardsService).getCreationContext()).toEqual({
+      role: 'gestor',
+      department_id: 'department-1',
+      can_create: true,
+    });
+    client.rpc.mockResolvedValueOnce({ data: 'board-new', error: null });
+    await expect(
+      TestBed.inject(BoardsService).create({
+        title: ' Novo ',
+        description: ' Texto ',
+        departmentId: 'department-1',
+      }),
+    ).resolves.toBe('board-new');
+    expect(client.rpc).toHaveBeenLastCalledWith('create_board', {
+      p_title: 'Novo',
+      p_department_id: 'department-1',
+      p_description: 'Texto',
+    });
+  });
+
+  it('uses controlled RPCs for column management', async () => {
+    client.rpc.mockResolvedValueOnce({ data: true, error: null });
+    await expect(TestBed.inject(BoardsService).canManageStructure('board-1')).resolves.toBe(true);
+    client.rpc.mockResolvedValueOnce({ data: 'column-new', error: null });
+    await expect(TestBed.inject(BoardsService).createColumn('board-1', ' Revisão ')).resolves.toBe(
+      'column-new',
+    );
+    expect(client.rpc).toHaveBeenLastCalledWith('create_board_column', {
+      p_board_id: 'board-1',
+      p_name: 'Revisão',
+    });
+    client.rpc.mockResolvedValueOnce({ data: null, error: null });
+    await TestBed.inject(BoardsService).renameColumn('column-1', ' Nova ');
+    expect(client.rpc).toHaveBeenLastCalledWith('rename_board_column', {
+      p_column_id: 'column-1',
+      p_name: 'Nova',
+    });
+  });
+
+  it('uses controlled RPCs for board editing and safe deletion', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    const service = TestBed.inject(BoardsService);
+    await service.updateBoard('board-1', { title: ' Novo ', description: ' Texto ' });
+    expect(client.rpc).toHaveBeenLastCalledWith('update_board', {
+      p_board_id: 'board-1',
+      p_title: 'Novo',
+      p_description: 'Texto',
+    });
+    await service.deleteColumn('column-1');
+    expect(client.rpc).toHaveBeenLastCalledWith('delete_board_column', {
+      p_column_id: 'column-1',
+    });
+    await service.deleteBoard('board-1');
+    expect(client.rpc).toHaveBeenLastCalledWith('delete_board', { p_board_id: 'board-1' });
   });
 });

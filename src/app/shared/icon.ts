@@ -17,7 +17,8 @@ export type IconName =
   | 'lock'
   | 'users'
   | 'calendar'
-  | 'check';
+  | 'check'
+  | 'more';
 
 @Component({
   selector: 'app-icon',
@@ -96,6 +97,11 @@ export type IconName =
         }
         @case ('check') {
           <path d="m5 12 4 4L19 6" />
+        }
+        @case ('more') {
+          <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
         }
       }
     </svg>

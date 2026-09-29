@@ -23,42 +23,105 @@ describe('Vacivitta interface', () => {
     session.set({ user: { id: 'test-user' } });
     auth.ready = Promise.resolve();
     auth.signOut.mockReset().mockResolvedValue(undefined);
-    TestBed.configureTestingModule({ imports: [App], providers: [
-      provideRouter(routes), { provide: AuthService, useValue: auth },
-      { provide: BoardsService, useValue: {
-        list: vi.fn().mockResolvedValue([
-          { id: '11111111-1111-4111-8111-111111111111', title: 'Quadro local', description: null, department: { name: 'Equipe local' } },
-        ]),
-        getById: vi.fn().mockImplementation(async (id: string) => id === '11111111-1111-4111-8111-111111111111'
-          ? { status: 'loaded', board: { id, title: 'Quadro local', description: null, department: null, columns: [] } }
-          : { status: 'unavailable' }),
-      } },
-      { provide: TasksService, useValue: {
-        list: vi.fn().mockResolvedValue([]),
-        listMine: vi.fn().mockResolvedValue([]),
-        listAssignees: vi.fn().mockResolvedValue([]),
-        listHistory: vi.fn().mockResolvedValue([]),
-        listComments: vi.fn().mockResolvedValue([]),
-        getById: vi.fn().mockResolvedValue({ status: 'unavailable' }),
-        create: vi.fn(),
-      } },
-      { provide: ChatService, useValue: {
-        listMyConversations: vi.fn().mockResolvedValue([
-          { id: 'conversation-1', kind: 'individual', title: null, created_at: '2026-09-28T10:00:00Z', last_activity_at: '2026-09-28T12:00:00Z' },
-          { id: 'conversation-2', kind: 'individual', title: null, created_at: '2026-09-28T09:00:00Z', last_activity_at: '2026-09-28T11:00:00Z' },
-        ]),
-        listConversationParticipants: vi.fn().mockImplementation(async (id: string) => [
-          { user_id: 'test-user', display_name: 'Conta Local' },
-          { user_id: id === 'conversation-2' ? 'colleague-a' : 'colleague-b', display_name: id === 'conversation-2' ? 'Colega Alfa' : 'Colega Beta' },
-        ]),
-        listMessages: vi.fn().mockImplementation(async (id: string) => id === 'conversation-2' ? [{
-          id: 'message-1', conversation_id: id, author_id: 'colleague-a', content: 'Mensagem persistida', created_at: '2026-09-28T11:00:00Z',
-        }] : []),
-        sendMessage: vi.fn(),
-        subscribeToMessages: vi.fn().mockReturnValue({ id: 'channel' }),
-        removeMessageSubscription: vi.fn().mockResolvedValue(undefined),
-      } },
-    ] });
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [
+        provideRouter(routes),
+        { provide: AuthService, useValue: auth },
+        {
+          provide: BoardsService,
+          useValue: {
+            list: vi
+              .fn()
+              .mockResolvedValue([
+                {
+                  id: '11111111-1111-4111-8111-111111111111',
+                  title: 'Quadro local',
+                  description: null,
+                  department: { name: 'Equipe local' },
+                },
+              ]),
+            getCreationContext: vi.fn().mockResolvedValue(null),
+            canManageStructure: vi.fn().mockResolvedValue(false),
+            createColumn: vi.fn(),
+            renameColumn: vi.fn(),
+            getById: vi
+              .fn()
+              .mockImplementation(async (id: string) =>
+                id === '11111111-1111-4111-8111-111111111111'
+                  ? {
+                      status: 'loaded',
+                      board: {
+                        id,
+                        title: 'Quadro local',
+                        description: null,
+                        department: null,
+                        columns: [],
+                      },
+                    }
+                  : { status: 'unavailable' },
+              ),
+          },
+        },
+        {
+          provide: TasksService,
+          useValue: {
+            list: vi.fn().mockResolvedValue([]),
+            listMine: vi.fn().mockResolvedValue([]),
+            listAssignees: vi.fn().mockResolvedValue([]),
+            listHistory: vi.fn().mockResolvedValue([]),
+            listComments: vi.fn().mockResolvedValue([]),
+            getById: vi.fn().mockResolvedValue({ status: 'unavailable' }),
+            create: vi.fn(),
+            moveToColumn: vi.fn(),
+          },
+        },
+        {
+          provide: ChatService,
+          useValue: {
+            listMyConversations: vi.fn().mockResolvedValue([
+              {
+                id: 'conversation-1',
+                kind: 'individual',
+                title: null,
+                created_at: '2026-09-28T10:00:00Z',
+                last_activity_at: '2026-09-28T12:00:00Z',
+              },
+              {
+                id: 'conversation-2',
+                kind: 'individual',
+                title: null,
+                created_at: '2026-09-28T09:00:00Z',
+                last_activity_at: '2026-09-28T11:00:00Z',
+              },
+            ]),
+            listConversationParticipants: vi.fn().mockImplementation(async (id: string) => [
+              { user_id: 'test-user', display_name: 'Conta Local' },
+              {
+                user_id: id === 'conversation-2' ? 'colleague-a' : 'colleague-b',
+                display_name: id === 'conversation-2' ? 'Colega Alfa' : 'Colega Beta',
+              },
+            ]),
+            listMessages: vi.fn().mockImplementation(async (id: string) =>
+              id === 'conversation-2'
+                ? [
+                    {
+                      id: 'message-1',
+                      conversation_id: id,
+                      author_id: 'colleague-a',
+                      content: 'Mensagem persistida',
+                      created_at: '2026-09-28T11:00:00Z',
+                    },
+                  ]
+                : [],
+            ),
+            sendMessage: vi.fn(),
+            subscribeToMessages: vi.fn().mockReturnValue({ id: 'channel' }),
+            removeMessageSubscription: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+      ],
+    });
   });
 
   it('creates the application', () => {
@@ -98,8 +161,17 @@ describe('Vacivitta interface', () => {
     expect(harness.routeNativeElement?.querySelector('a[href="/inicio"]')).toBeNull();
   });
 
-  it.each(['/', '/inicio', '/quadros', '/quadros/rotina', '/minhas-pendencias', '/pendencias/11111111-1111-4111-8111-111111111111', '/chat', '/administracao', '/endereco-inexistente'])
-  ('protects %s without a session', async (url) => {
+  it.each([
+    '/',
+    '/inicio',
+    '/quadros',
+    '/quadros/rotina',
+    '/minhas-pendencias',
+    '/pendencias/11111111-1111-4111-8111-111111111111',
+    '/chat',
+    '/administracao',
+    '/endereco-inexistente',
+  ])('protects %s without a session', async (url) => {
     session.set(null);
     const harness = await RouterTestingHarness.create(url);
     expect(TestBed.inject(Router).url).toBe('/login');
@@ -109,7 +181,9 @@ describe('Vacivitta interface', () => {
   it('waits for session restoration before admitting the user', async () => {
     session.set(null);
     let restore!: () => void;
-    auth.ready = new Promise<void>((resolve) => { restore = resolve; });
+    auth.ready = new Promise<void>((resolve) => {
+      restore = resolve;
+    });
     const pending = RouterTestingHarness.create('/inicio');
     expect(TestBed.inject(Router).url).not.toBe('/inicio');
     session.set({ user: { id: 'test-user' } });
@@ -127,7 +201,9 @@ describe('Vacivitta interface', () => {
 
   it('shows the real profile name and invokes logout from the layout', async () => {
     const harness = await RouterTestingHarness.create('/inicio');
-    expect(harness.routeNativeElement?.querySelector('.topbar')?.textContent).toContain('Conta Local');
+    expect(harness.routeNativeElement?.querySelector('.topbar')?.textContent).toContain(
+      'Conta Local',
+    );
     (harness.routeNativeElement?.querySelector('.exit-link') as HTMLButtonElement).click();
     await harness.fixture.whenStable();
     expect(auth.signOut).toHaveBeenCalledOnce();

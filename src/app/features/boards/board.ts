@@ -1,18 +1,28 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { CdkDrag, CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { AuthService } from '../../core/auth/auth.service';
 import { Icon } from '../../shared/icon';
 import { PageHeading } from '../../shared/page-heading';
 import { BoardAssignee, TaskDetail } from '../tasks/task-detail';
 import { TasksService } from '../tasks/tasks.service';
-import { BoardResult, BUSINESS_STATE_LABELS } from './board-detail';
+import { BoardColumn, BoardResult, BUSINESS_STATE_LABELS } from './board-detail';
 import { BoardsService } from './boards.service';
 
 @Component({
-  imports: [RouterLink, PageHeading, ReactiveFormsModule, DatePipe, Icon],
+  imports: [
+    RouterLink,
+    PageHeading,
+    ReactiveFormsModule,
+    DatePipe,
+    Icon,
+    CdkDrag,
+    CdkDropList,
+    CdkDropListGroup,
+  ],
   template: `
     <a class="back-link" routerLink="/quadros"><app-icon name="arrow-left" /> Todos os quadros</a>
     @if (result().status === 'loading') {
@@ -24,14 +34,50 @@ import { BoardsService } from './boards.service';
         [eyebrow]="current.department?.name || 'Departamento indisponível'"
       />
       <div class="board-info">
-        <button
-          class="button primary"
-          type="button"
-          (click)="openForm()"
-          [disabled]="!current.columns.length || !assignees().length"
-        >
-          <app-icon name="plus" /> Nova pendência
-        </button>
+        <div class="board-context-actions">
+          <span class="board-created-at"
+            >Criado em {{ current.created_at | date: 'dd/MM/yyyy' }} às
+            {{ current.created_at | date: 'HH:mm' }}</span
+          >
+          <div class="board-primary-actions">
+            <button
+              class="button primary"
+              type="button"
+              (click)="openForm()"
+              [disabled]="!current.columns.length || !assignees().length"
+            >
+              <app-icon name="plus" /> Nova pendência
+            </button>
+            @if (canManage() && current.columns.length) {
+              <button class="button secondary" type="button" (click)="openNewColumn()">
+                <app-icon name="plus" /> Nova coluna
+              </button>
+            }
+            @if (canManage()) {
+              <div class="menu-shell">
+                <button
+                  class="button secondary manage-board-button"
+                  type="button"
+                  aria-label="Ações administrativas do quadro"
+                  [attr.aria-expanded]="boardMenuOpen()"
+                  (click)="boardMenuOpen.update((open) => !open)"
+                >
+                  <app-icon name="settings" /> Gerenciar quadro
+                </button>
+                @if (boardMenuOpen()) {
+                  <div class="action-menu" role="menu">
+                    <button type="button" role="menuitem" (click)="openEditBoard()">
+                      Editar quadro
+                    </button>
+                    <button class="danger-item" type="button" role="menuitem" (click)="requestDeleteBoard()">
+                      Excluir quadro
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
         <div class="board-actions">
           <span class="badge"><app-icon name="boards" /> Visualização Kanban</span>
           <div class="filter-tabs" aria-label="Filtrar pendências">
@@ -54,6 +100,85 @@ import { BoardsService } from './boards.service';
           </div>
         </div>
       </div>
+      @if (newColumnOpen() && current.columns.length) {
+        <div class="header-column-form panel">
+          <label for="new-column-name">Nome da nova coluna</label>
+          <input
+            id="new-column-name"
+            [value]="newColumnName()"
+            (input)="newColumnName.set($any($event.target).value)"
+            (keydown.enter)="createColumn()"
+            (keydown.escape)="closeNewColumn()"
+            maxlength="120"
+            placeholder="Ex.: Em revisão"
+          />
+          <button class="button primary" type="button" (click)="createColumn()" [disabled]="columnBusy()">
+            Adicionar
+          </button>
+          <button class="button tertiary" type="button" (click)="closeNewColumn()" [disabled]="columnBusy()">
+            Cancelar
+          </button>
+        </div>
+      }
+      @if (managementFeedback()) {
+        <p class="feedback success" role="status">{{ managementFeedback() }}</p>
+      }
+      @if (managementError()) {
+        <p class="feedback error" role="alert">{{ managementError() }}</p>
+      }
+
+      @if (editBoardOpen()) {
+        <button class="dialog-backdrop" type="button" aria-label="Fechar edição do quadro" (click)="closeEditBoard()"></button>
+        <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="edit-board-title">
+          <header class="dialog-header">
+            <div>
+              <h2 id="edit-board-title">Editar quadro</h2>
+              <p class="muted">Atualize o nome e a descrição deste quadro.</p>
+            </div>
+            <button class="icon-button" type="button" aria-label="Fechar" (click)="closeEditBoard()" [disabled]="boardBusy()">
+              <app-icon name="close" />
+            </button>
+          </header>
+          <form class="task-form" [formGroup]="editBoardForm" (ngSubmit)="saveBoard()">
+            <label
+              >Nome do quadro<input formControlName="title" maxlength="200" />
+              @if (editBoardForm.controls.title.touched && editBoardForm.controls.title.invalid) {
+                <span class="field-error">Informe o nome do quadro.</span>
+              }
+            </label>
+            <label
+              >Descrição <span class="muted">(opcional)</span
+              ><textarea formControlName="description" rows="4"></textarea>
+            </label>
+            <div class="dialog-actions">
+              <button class="button tertiary" type="button" (click)="closeEditBoard()" [disabled]="boardBusy()">Cancelar</button>
+              <button class="button primary" type="submit" [disabled]="boardBusy()">
+                {{ boardBusy() ? 'Salvando…' : 'Salvar alterações' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      @if (confirmation(); as pendingConfirmation) {
+        <button class="dialog-backdrop" type="button" aria-label="Cancelar exclusão" (click)="cancelConfirmation()"></button>
+        <section class="dialog-card confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description">
+          <h2 id="delete-title">
+            {{ pendingConfirmation.kind === 'board' ? 'Excluir quadro?' : 'Excluir coluna?' }}
+          </h2>
+          <p id="delete-description" class="muted">
+            {{ pendingConfirmation.kind === 'board'
+              ? 'Esta ação removerá permanentemente este quadro e suas colunas vazias. Ela não poderá ser desfeita.'
+              : 'Esta ação removerá a coluna do quadro e não poderá ser desfeita.' }}
+          </p>
+          <div class="dialog-actions">
+            <button class="button tertiary" type="button" (click)="cancelConfirmation()" [disabled]="deleting()">Cancelar</button>
+            <button class="button danger" type="button" (click)="confirmDeletion()" [disabled]="deleting()">
+              {{ deleting() ? 'Excluindo…' : (pendingConfirmation.kind === 'board' ? 'Excluir quadro' : 'Excluir coluna') }}
+            </button>
+          </div>
+        </section>
+      }
 
       @if (formOpen()) {
         <button
@@ -196,13 +321,77 @@ import { BoardsService } from './boards.service';
           <button type="button" (click)="retry()">Tentar novamente</button>
         </section>
       } @else if (current.columns.length) {
-        <p class="note">No celular, deslize o quadro para ver as colunas.</p>
-        <section class="kanban" tabindex="0" aria-label="Quadro Kanban com rolagem horizontal">
+        <p class="note">
+          No celular, deslize o quadro para ver as colunas. Arraste os cards permitidos para
+          movê-los.
+        </p>
+        <section
+          class="kanban"
+          cdkDropListGroup
+          tabindex="0"
+          aria-label="Quadro Kanban com rolagem horizontal"
+        >
           @for (column of current.columns; track column.id) {
-            <section class="kanban-column" [attr.aria-label]="column.title">
-              <div class="section-heading">
-                <h2>{{ column.title }}</h2>
-                <span class="column-count">{{ tasksForColumn(column.id).length }}</span>
+            <section
+              class="kanban-column"
+              cdkDropList
+              [cdkDropListData]="tasksForColumn(column.id)"
+              (cdkDropListDropped)="dropTask($event, column.id)"
+              [attr.aria-label]="column.title"
+            >
+              <div class="section-heading column-heading">
+                @if (renamingColumnId() === column.id) {
+                  <label class="sr-only" [for]="'rename-' + column.id">Novo nome da coluna</label>
+                  <input
+                    class="column-name-input"
+                    [id]="'rename-' + column.id"
+                    [value]="renameColumnName()"
+                    (input)="renameColumnName.set($any($event.target).value)"
+                    (keydown.enter)="renameColumn(column)"
+                    (keydown.escape)="cancelRename()"
+                    maxlength="120"
+                  />
+                  <button
+                    class="column-action"
+                    type="button"
+                    (click)="renameColumn(column)"
+                    [disabled]="columnBusy()"
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    class="column-action"
+                    type="button"
+                    (click)="cancelRename()"
+                    [disabled]="columnBusy()"
+                  >
+                    Cancelar
+                  </button>
+                } @else {
+                  <h2>{{ column.title }}</h2>
+                  <span class="column-count">{{ tasksForColumn(column.id).length }}</span>
+                  @if (canManage()) {
+                    <button
+                      class="column-menu"
+                      type="button"
+                      (click)="toggleColumnMenu(column.id)"
+                      aria-label="Ações da coluna"
+                      [attr.aria-expanded]="columnMenuId() === column.id"
+                    >
+                      <app-icon name="more" />
+                    </button>
+                    @if (columnMenuId() === column.id) {
+                      <div class="action-menu column-action-menu" role="menu">
+                        <button type="button" role="menuitem" (click)="startRename(column)">
+                          Renomear coluna
+                        </button>
+                        <button class="danger-item" type="button" role="menuitem" (click)="requestDeleteColumn(column)">
+                          Excluir coluna
+                        </button>
+                      </div>
+                    }
+                  }
+                }
               </div>
               <p class="column-description">
                 {{
@@ -215,6 +404,10 @@ import { BoardsService } from './boards.service';
                 @for (task of tasksForColumn(column.id); track task.id) {
                   <a
                     class="task-card-link"
+                    cdkDrag
+                    [cdkDragData]="task"
+                    [cdkDragDisabled]="!canMove(task)"
+                    [class.draggable]="canMove(task)"
                     [routerLink]="['/pendencias', task.id]"
                     [attr.aria-label]="'Abrir pendência ' + task.title"
                   >
@@ -224,11 +417,10 @@ import { BoardsService } from './boards.service';
                           class="badge"
                           [class.private]="task.is_private"
                           [class.shared]="!task.is_private"
-                        >
-                          <app-icon [name]="task.is_private ? 'lock' : 'users'" />{{
+                          ><app-icon [name]="task.is_private ? 'lock' : 'users'" />{{
                             task.is_private ? 'Privada' : 'Compartilhada'
-                          }}
-                        </span>
+                          }}</span
+                        >
                         <span class="badge" [attr.data-state]="task.business_state">{{
                           labels[task.business_state]
                         }}</span>
@@ -254,8 +446,34 @@ import { BoardsService } from './boards.service';
           }
         </section>
       } @else {
-        <section class="panel empty" role="status">
-          <h2>Este quadro ainda não tem colunas</h2>
+        <section class="panel empty empty-board" role="status">
+          <h2>Este quadro ainda não possui colunas.</h2>
+          <p>Crie a primeira coluna para começar a organizar as pendências.</p>
+          @if (canManage()) {
+            @if (newColumnOpen()) {
+              <div class="first-column-form">
+                <label for="first-column-name">Nome da primeira coluna</label
+                ><input
+                  id="first-column-name"
+                  [value]="newColumnName()"
+                  (input)="newColumnName.set($any($event.target).value)"
+                  (keydown.enter)="createColumn()"
+                  maxlength="120"
+                /><button
+                  class="button primary"
+                  type="button"
+                  (click)="createColumn()"
+                  [disabled]="columnBusy()"
+                >
+                  Criar coluna
+                </button>
+              </div>
+            } @else {
+              <button class="button primary" type="button" (click)="openNewColumn()">
+                <app-icon name="plus" /> Criar primeira coluna
+              </button>
+            }
+          }
         </section>
       }
     } @else {
@@ -283,6 +501,7 @@ export class BoardPage {
   private readonly boardsService = inject(BoardsService);
   private readonly tasksService = inject(TasksService);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   private readonly params = toSignal(inject(ActivatedRoute).paramMap);
   private readonly attempt = signal(0);
   readonly result = signal<BoardResult | { status: 'loading' }>({ status: 'loading' });
@@ -297,6 +516,21 @@ export class BoardPage {
   readonly formOpen = signal(false);
   readonly creating = signal(false);
   readonly creationError = signal('');
+  readonly canManage = signal(false);
+  readonly boardMenuOpen = signal(false);
+  readonly columnMenuId = signal<string | null>(null);
+  readonly editBoardOpen = signal(false);
+  readonly boardBusy = signal(false);
+  readonly deleting = signal(false);
+  readonly confirmation = signal<{ kind: 'board' | 'column'; column?: BoardColumn } | null>(null);
+  readonly managementError = signal('');
+  readonly managementFeedback = signal('');
+  readonly newColumnOpen = signal(false);
+  readonly newColumnName = signal('');
+  readonly renamingColumnId = signal<string | null>(null);
+  readonly renameColumnName = signal('');
+  readonly columnBusy = signal(false);
+  readonly movingTaskId = signal<string | null>(null);
   readonly filter = signal<'active' | 'completed'>('active');
   readonly labels = BUSINESS_STATE_LABELS;
   readonly form = new FormGroup({
@@ -306,6 +540,10 @@ export class BoardPage {
     dueAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     columnId: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     isPrivate: new FormControl(false, { nonNullable: true }),
+  });
+  readonly editBoardForm = new FormGroup({
+    title: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    description: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -320,6 +558,15 @@ export class BoardPage {
       this.tasks.set([]);
       this.assignees.set([]);
       this.contentError.set('');
+      this.managementError.set('');
+      this.managementFeedback.set('');
+      this.canManage.set(false);
+      this.boardMenuOpen.set(false);
+      this.columnMenuId.set(null);
+      this.editBoardOpen.set(false);
+      this.confirmation.set(null);
+      this.closeNewColumn();
+      this.cancelRename();
       this.formOpen.set(false);
       void this.load(id, () => active);
     });
@@ -333,13 +580,15 @@ export class BoardPage {
       if (result.status !== 'loaded') return;
       this.contentLoading.set(true);
       try {
-        const [tasks, assignees] = await Promise.all([
+        const [tasks, assignees, canManage] = await Promise.all([
           this.tasksService.list(id),
           this.tasksService.listAssignees(id),
+          this.boardsService.canManageStructure(id),
         ]);
         if (!isActive()) return;
         this.tasks.set(tasks);
         this.assignees.set(assignees);
+        this.canManage.set(canManage);
       } catch {
         if (isActive()) this.contentError.set('Tente novamente em instantes.');
       } finally {
@@ -430,6 +679,220 @@ export class BoardPage {
     } finally {
       this.creating.set(false);
     }
+  }
+  canMove(task: TaskDetail): boolean {
+    const userId = this.auth.session()?.user.id;
+    return (
+      this.movingTaskId() !== task.id &&
+      !!userId &&
+      (this.canManage() || task.assignee_id === userId || task.created_by === userId)
+    );
+  }
+
+  async dropTask(event: CdkDragDrop<TaskDetail[]>, targetColumnId: string): Promise<void> {
+    const task = event.item.data as TaskDetail;
+    if (!task || task.column_id === targetColumnId || !this.canMove(task)) return;
+    const previousTasks = this.tasks();
+    this.managementError.set('');
+    this.managementFeedback.set('');
+    this.movingTaskId.set(task.id);
+    this.tasks.update((tasks) =>
+      tasks.map((item) => (item.id === task.id ? { ...item, column_id: targetColumnId } : item)),
+    );
+    try {
+      await this.tasksService.moveToColumn(task.id, targetColumnId);
+      this.managementFeedback.set('Pendência movida com sucesso.');
+    } catch {
+      this.tasks.set(previousTasks);
+      this.managementError.set(
+        'Não foi possível mover a pendência. Ela voltou para a coluna anterior.',
+      );
+    } finally {
+      this.movingTaskId.set(null);
+    }
+  }
+
+  openEditBoard(): void {
+    const board = this.board();
+    if (!board || !this.canManage()) return;
+    this.boardMenuOpen.set(false);
+    this.managementError.set('');
+    this.managementFeedback.set('');
+    this.editBoardForm.reset({ title: board.title, description: board.description ?? '' });
+    this.editBoardOpen.set(true);
+  }
+  closeEditBoard(): void {
+    if (!this.boardBusy()) this.editBoardOpen.set(false);
+  }
+  async saveBoard(): Promise<void> {
+    const board = this.board();
+    if (!board || !this.canManage() || this.boardBusy()) return;
+    this.editBoardForm.markAllAsTouched();
+    if (this.editBoardForm.invalid) return;
+    const value = this.editBoardForm.getRawValue();
+    this.boardBusy.set(true);
+    this.managementError.set('');
+    try {
+      await this.boardsService.updateBoard(board.id, {
+        title: value.title,
+        description: value.description || null,
+      });
+      const current = this.result();
+      if (current.status === 'loaded') {
+        this.result.set({
+          status: 'loaded',
+          board: {
+            ...current.board,
+            title: value.title.trim(),
+            description: value.description.trim() || null,
+          },
+        });
+      }
+      this.editBoardOpen.set(false);
+      this.managementFeedback.set('Quadro atualizado com sucesso.');
+    } catch {
+      this.managementError.set('Não foi possível salvar as alterações do quadro. Tente novamente.');
+    } finally {
+      this.boardBusy.set(false);
+    }
+  }
+
+  requestDeleteBoard(): void {
+    if (!this.canManage()) return;
+    this.boardMenuOpen.set(false);
+    this.confirmation.set({ kind: 'board' });
+  }
+  requestDeleteColumn(column: BoardColumn): void {
+    if (!this.canManage()) return;
+    this.columnMenuId.set(null);
+    this.confirmation.set({ kind: 'column', column });
+  }
+  cancelConfirmation(): void {
+    if (!this.deleting()) this.confirmation.set(null);
+  }
+  async confirmDeletion(): Promise<void> {
+    const board = this.board();
+    const confirmation = this.confirmation();
+    if (!board || !confirmation || !this.canManage() || this.deleting()) return;
+    this.deleting.set(true);
+    this.managementError.set('');
+    this.managementFeedback.set('');
+    try {
+      if (confirmation.kind === 'column' && confirmation.column) {
+        await this.boardsService.deleteColumn(confirmation.column.id);
+        this.updateColumns(board.columns.filter((column) => column.id !== confirmation.column!.id));
+        this.confirmation.set(null);
+        this.managementFeedback.set('Coluna excluída com sucesso.');
+      } else {
+        await this.boardsService.deleteBoard(board.id);
+        this.confirmation.set(null);
+        await this.router.navigateByUrl('/quadros');
+      }
+    } catch (error) {
+      this.confirmation.set(null);
+      this.managementError.set(
+        error instanceof Error
+          ? error.message
+          : confirmation.kind === 'column'
+            ? 'Esta coluna possui pendências. Mova as pendências antes de excluí-la.'
+            : 'Não é possível excluir este quadro enquanto houver pendências vinculadas.',
+      );
+    } finally {
+      this.deleting.set(false);
+    }
+  }
+
+  toggleColumnMenu(columnId: string): void {
+    this.columnMenuId.update((current) => (current === columnId ? null : columnId));
+  }
+
+  openNewColumn(): void {
+    if (!this.canManage()) return;
+    this.managementError.set('');
+    this.managementFeedback.set('');
+    this.newColumnName.set('');
+    this.newColumnOpen.set(true);
+  }
+  closeNewColumn(): void {
+    if (this.columnBusy()) return;
+    this.newColumnOpen.set(false);
+    this.newColumnName.set('');
+  }
+  async createColumn(): Promise<void> {
+    const board = this.board();
+    const name = this.newColumnName().trim();
+    if (!board || !this.canManage() || this.columnBusy()) return;
+    if (!name) {
+      this.managementError.set('Informe o nome da coluna.');
+      return;
+    }
+    this.columnBusy.set(true);
+    this.managementError.set('');
+    try {
+      const id = await this.boardsService.createColumn(board.id, name);
+      const columns = board.columns;
+      this.updateColumns([
+        ...columns,
+        {
+          id,
+          title: name,
+          position: columns.length ? Math.max(...columns.map((column) => column.position)) + 1 : 0,
+          business_state: null,
+        },
+      ]);
+      this.newColumnOpen.set(false);
+      this.newColumnName.set('');
+      this.managementFeedback.set('Coluna criada com sucesso.');
+    } catch {
+      this.managementError.set('Não foi possível criar a coluna. Tente novamente.');
+    } finally {
+      this.columnBusy.set(false);
+    }
+  }
+
+  startRename(column: BoardColumn): void {
+    if (!this.canManage()) return;
+    this.managementError.set('');
+    this.managementFeedback.set('');
+    this.columnMenuId.set(null);
+    this.renamingColumnId.set(column.id);
+    this.renameColumnName.set(column.title);
+  }
+  cancelRename(): void {
+    if (this.columnBusy()) return;
+    this.renamingColumnId.set(null);
+    this.renameColumnName.set('');
+  }
+  async renameColumn(column: BoardColumn): Promise<void> {
+    const name = this.renameColumnName().trim();
+    if (!this.canManage() || this.columnBusy()) return;
+    if (!name) {
+      this.managementError.set('Informe o novo nome da coluna.');
+      return;
+    }
+    this.columnBusy.set(true);
+    this.managementError.set('');
+    try {
+      await this.boardsService.renameColumn(column.id, name);
+      this.updateColumns(
+        (this.board()?.columns ?? []).map((item) =>
+          item.id === column.id ? { ...item, title: name } : item,
+        ),
+      );
+      this.renamingColumnId.set(null);
+      this.renameColumnName.set('');
+      this.managementFeedback.set('Coluna renomeada com sucesso.');
+    } catch {
+      this.managementError.set('Não foi possível renomear a coluna. Tente novamente.');
+    } finally {
+      this.columnBusy.set(false);
+    }
+  }
+
+  private updateColumns(columns: BoardColumn[]): void {
+    const current = this.result();
+    if (current.status === 'loaded')
+      this.result.set({ status: 'loaded', board: { ...current.board, columns } });
   }
   retry(): void {
     this.attempt.update((attempt) => attempt + 1);
