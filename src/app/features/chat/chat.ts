@@ -1,9 +1,14 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
 import { PageHeading } from '../../shared/page-heading';
-import { ChatConversation, ChatMessage, ConversationParticipant } from './chat.models';
+import {
+  ChatConversation,
+  ChatMessage,
+  ConversationParticipant,
+  DirectChatCandidate,
+} from './chat.models';
 import { ChatService } from './chat.service';
 import { Icon } from '../../shared/icon';
 
@@ -36,6 +41,18 @@ export class Chat implements OnDestroy {
   readonly draft = signal('');
   readonly sending = signal(false);
   readonly sendError = signal('');
+  readonly newConversationOpen = signal(false);
+  readonly candidates = signal<DirectChatCandidate[]>([]);
+  readonly candidateQuery = signal('');
+  readonly candidatesLoading = signal(false);
+  readonly candidateError = signal('');
+  readonly startingConversation = signal(false);
+  readonly filteredCandidates = computed(() => {
+    const query = this.candidateQuery().trim().toLocaleLowerCase('pt-BR');
+    return this.candidates().filter((candidate) =>
+      (candidate.display_name ?? '').toLocaleLowerCase('pt-BR').includes(query),
+    );
+  });
 
   constructor() {
     void this.loadConversations();
@@ -73,6 +90,53 @@ export class Chat implements OnDestroy {
     } finally {
       if (!this.destroyed) this.listLoading.set(false);
     }
+  }
+
+  async openNewConversation(): Promise<void> {
+    if (this.startingConversation()) return;
+    this.newConversationOpen.set(true);
+    this.candidateQuery.set('');
+    this.candidateError.set('');
+    this.candidatesLoading.set(true);
+    try {
+      this.candidates.set(await this.service.listDirectChatCandidates());
+    } catch {
+      this.candidateError.set('Não foi possível carregar as pessoas disponíveis. Tente novamente.');
+    } finally {
+      this.candidatesLoading.set(false);
+    }
+  }
+
+  closeNewConversation(): void {
+    if (!this.startingConversation()) this.newConversationOpen.set(false);
+  }
+
+  async startConversation(candidate: DirectChatCandidate): Promise<void> {
+    if (this.startingConversation()) return;
+    this.startingConversation.set(true);
+    this.candidateError.set('');
+    try {
+      const conversationId = await this.service.getOrCreateDirectConversation(candidate.user_id);
+      await this.loadConversations();
+      const item = this.conversations().find(
+        (entry) => entry.conversation.id === conversationId,
+      );
+      if (!item) throw new Error();
+      this.newConversationOpen.set(false);
+      await this.openConversation(item);
+    } catch {
+      this.candidateError.set('Não foi possível abrir a conversa. Tente novamente.');
+    } finally {
+      this.startingConversation.set(false);
+    }
+  }
+
+  candidateName(candidate: DirectChatCandidate): string {
+    return candidate.display_name?.trim() || 'Pessoa sem nome';
+  }
+
+  candidateInitials(candidate: DirectChatCandidate): string {
+    return this.initials(this.candidateName(candidate));
   }
 
   async openConversation(item: ConversationListItem): Promise<void> {

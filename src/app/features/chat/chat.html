@@ -1,4 +1,63 @@
-<app-page-heading title="Chat" description="Conversas individuais da equipe." />
+<app-page-heading title="Chat" description="Conversas individuais da equipe.">
+  <button class="button primary" type="button" (click)="openNewConversation()">
+    <app-icon name="plus" /> Nova conversa
+  </button>
+</app-page-heading>
+@if (newConversationOpen()) {
+  <button
+    class="chat-dialog-backdrop"
+    type="button"
+    aria-label="Fechar nova conversa"
+    (click)="closeNewConversation()"
+  ></button>
+  <section
+    class="new-chat-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="new-chat-title"
+  >
+    <header>
+      <div>
+        <h2 id="new-chat-title">Nova conversa</h2>
+        <p class="muted">Escolha uma pessoa para iniciar ou abrir a conversa individual.</p>
+      </div>
+      <button class="icon-button" type="button" aria-label="Fechar" (click)="closeNewConversation()" [disabled]="startingConversation()">
+        <app-icon name="close" />
+      </button>
+    </header>
+    <label class="candidate-search"
+      >Buscar pessoa
+      <input
+        type="search"
+        placeholder="Digite um nome"
+        [value]="candidateQuery()"
+        (input)="candidateQuery.set($any($event.target).value)"
+        [disabled]="candidatesLoading() || startingConversation()"
+      />
+    </label>
+    @if (candidatesLoading()) {
+      <p class="note" role="status">Carregando pessoas…</p>
+    } @else if (candidateError()) {
+      <div class="candidate-feedback">
+        <p role="alert">{{ candidateError() }}</p>
+        <button class="button secondary" type="button" (click)="openNewConversation()" [disabled]="startingConversation()">
+          Tentar novamente
+        </button>
+      </div>
+    } @else {
+      <div class="candidate-list">
+        @for (candidate of filteredCandidates(); track candidate.user_id) {
+          <button type="button" class="candidate" (click)="startConversation(candidate)" [disabled]="startingConversation()">
+            <span class="avatar">{{ candidateInitials(candidate) }}</span>
+            <strong>{{ candidateName(candidate) }}</strong>
+          </button>
+        } @empty {
+          <p class="note" role="status">Nenhuma pessoa encontrada.</p>
+        }
+      </div>
+    }
+  </section>
+}
 <div class="chat-layout panel">
   <aside class="conversation-list" aria-label="Conversas">
     <div class="list-heading">

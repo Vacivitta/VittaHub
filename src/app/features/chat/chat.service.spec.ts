@@ -57,6 +57,20 @@ describe('ChatService', () => {
     });
   });
 
+  it('lists direct candidates and gets or creates a direct conversation through controlled RPCs', async () => {
+    const candidates = [{ user_id: 'user-2', display_name: 'Pessoa Dois' }];
+    client.rpc.mockResolvedValueOnce({ data: candidates, error: null });
+    const service = TestBed.inject(ChatService);
+    await expect(service.listDirectChatCandidates()).resolves.toEqual(candidates);
+    expect(client.rpc).toHaveBeenLastCalledWith('list_direct_chat_candidates');
+
+    client.rpc.mockResolvedValueOnce({ data: 'conversation-2', error: null });
+    await expect(service.getOrCreateDirectConversation('user-2')).resolves.toBe('conversation-2');
+    expect(client.rpc).toHaveBeenLastCalledWith('get_or_create_direct_conversation', {
+      p_target_user_id: 'user-2',
+    });
+  });
+
   it('loads message history in stable chronological order', async () => {
     const messages = [{
       id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-1',

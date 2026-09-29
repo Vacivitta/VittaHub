@@ -40,6 +40,8 @@ describe('Chat', () => {
   const sendMessage = vi.fn();
   const subscribeToMessages = vi.fn();
   const removeMessageSubscription = vi.fn();
+  const listDirectChatCandidates = vi.fn();
+  const getOrCreateDirectConversation = vi.fn();
   const subscriptions: Array<{
     conversationId: string;
     onMessage: (message: ChatMessage) => void;
@@ -66,13 +68,19 @@ describe('Chat', () => {
       return channel;
     });
     removeMessageSubscription.mockReset().mockResolvedValue(undefined);
+    listDirectChatCandidates.mockReset().mockResolvedValue([
+      { user_id: 'user-2', display_name: 'Ana Silva' },
+      { user_id: 'user-3', display_name: 'Bruno Souza' },
+    ]);
+    getOrCreateDirectConversation.mockReset().mockResolvedValue('conversation-2');
     TestBed.configureTestingModule({
       imports: [Chat],
       providers: [
         { provide: AuthService, useValue: { session } },
         { provide: ChatService, useValue: {
           listMyConversations, listConversationParticipants, listMessages, sendMessage,
-          subscribeToMessages, removeMessageSubscription,
+          subscribeToMessages, removeMessageSubscription, listDirectChatCandidates,
+          getOrCreateDirectConversation,
         } },
       ],
     });
@@ -111,6 +119,51 @@ describe('Chat', () => {
     const fixture = await render();
     expect(fixture.nativeElement.textContent).toContain('Nenhuma conversa individual disponível');
     expect(fixture.nativeElement.querySelector('.conversation')).toBeNull();
+  });
+
+  it('opens Nova conversa, loads candidates and filters names locally', async () => {
+    const fixture = await render();
+    const button = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button'),
+    ).find((item) => item.textContent?.includes('Nova conversa'))!;
+    button.click();
+    await vi.waitFor(() => expect(listDirectChatCandidates).toHaveBeenCalledOnce());
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Ana Silva');
+    expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
+
+    const input = fixture.nativeElement.querySelector('.candidate-search input') as HTMLInputElement;
+    input.value = 'bruno';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('Ana Silva');
+    expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
+  });
+
+  it('opens the returned conversation after refreshing the conversation list', async () => {
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    await page.openNewConversation();
+    await page.startConversation({ user_id: 'user-3', display_name: 'Bruno Souza' });
+    fixture.detectChanges();
+    expect(getOrCreateDirectConversation).toHaveBeenCalledExactlyOnceWith('user-3');
+    expect(listMyConversations).toHaveBeenCalledTimes(2);
+    expect(page.selected()?.conversation.id).toBe('conversation-2');
+    expect(listMessages).toHaveBeenCalledWith('conversation-2');
+    expect(page.newConversationOpen()).toBe(false);
+  });
+
+  it('keeps the candidate dialog usable when conversation creation fails', async () => {
+    getOrCreateDirectConversation.mockRejectedValue(new Error('private detail'));
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    await page.openNewConversation();
+    await page.startConversation({ user_id: 'user-2', display_name: 'Ana Silva' });
+    fixture.detectChanges();
+    expect(page.newConversationOpen()).toBe(true);
+    expect(page.startingConversation()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('Não foi possível abrir a conversa.');
+    expect(fixture.nativeElement.textContent).not.toContain('private detail');
   });
 
   it('shows a friendly list error and retries safely', async () => {

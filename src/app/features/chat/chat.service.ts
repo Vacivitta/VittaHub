@@ -2,7 +2,12 @@ import { inject, Injectable } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
-import { ChatConversation, ChatMessage, ConversationParticipant } from './chat.models';
+import {
+  ChatConversation,
+  ChatMessage,
+  ConversationParticipant,
+  DirectChatCandidate,
+} from './chat.models';
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -34,6 +39,31 @@ export class ChatService {
       return (data ?? []) as ConversationParticipant[];
     } catch {
       throw new Error('Não foi possível carregar os participantes da conversa.');
+    }
+  }
+
+  async listDirectChatCandidates(): Promise<DirectChatCandidate[]> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc('list_direct_chat_candidates');
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      return (data ?? []) as DirectChatCandidate[];
+    } catch {
+      throw new Error('Não foi possível carregar as pessoas disponíveis. Tente novamente.');
+    }
+  }
+
+  async getOrCreateDirectConversation(targetUserId: string): Promise<string> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc('get_or_create_direct_conversation', {
+        p_target_user_id: targetUserId,
+      });
+      if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId)
+        throw new Error();
+      return data;
+    } catch {
+      throw new Error('Não foi possível abrir a conversa. Tente novamente.');
     }
   }
 

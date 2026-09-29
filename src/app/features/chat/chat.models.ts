@@ -13,6 +13,11 @@ export interface ConversationParticipant {
   display_name: string | null;
 }
 
+export interface DirectChatCandidate {
+  user_id: string;
+  display_name: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   conversation_id: string;
