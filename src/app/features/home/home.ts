@@ -3,8 +3,9 @@ import { RouterLink } from '@angular/router';
 import { BOARDS, DEMO_DATE, DEMO_USER, TASKS } from '../../core/demo-data';
 import { PageHeading } from '../../shared/page-heading';
 import { TaskCard } from '../../shared/task-card';
+import { Icon } from '../../shared/icon';
 @Component({
-  imports: [RouterLink, PageHeading, TaskCard],
+  imports: [RouterLink, PageHeading, TaskCard, Icon],
   templateUrl: './home.html',
 })
 export class Home {

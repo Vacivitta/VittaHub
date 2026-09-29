@@ -7,11 +7,14 @@ import { PageHeading } from '../../shared/page-heading';
 import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
 import { BoardAssignee, TaskComment, TaskEvent, TaskResult } from './task-detail';
 import { TasksService } from './tasks.service';
+import { Icon } from '../../shared/icon';
 
 @Component({
-  imports: [RouterLink, PageHeading, DatePipe],
+  imports: [RouterLink, PageHeading, DatePipe, Icon],
   template: `
-    <a class="back-link" routerLink="/minhas-pendencias">← Minhas pendências</a>
+    <a class="back-link" routerLink="/minhas-pendencias"
+      ><app-icon name="arrow-left" /> Minhas pendências</a
+    >
     @if (result().status === 'loading') {
       <div class="panel empty" role="status">Carregando pendência…</div>
     } @else if (task(); as current) {
@@ -20,72 +23,151 @@ import { TasksService } from './tasks.service';
         [description]="current.description || 'Sem descrição.'"
         eyebrow="Detalhe da pendência"
       />
-      <section class="panel task-detail-panel">
-        <dl class="task-detail-grid">
-          <div><dt>Estado</dt><dd><span class="badge">{{ labels[current.business_state] }}</span></dd></div>
-          <div><dt>Privacidade</dt><dd>{{ current.is_private ? 'Privada' : 'Compartilhada' }}</dd></div>
-          <div><dt>Responsável</dt><dd>{{ assigneeName() || 'Nome indisponível' }}</dd></div>
-          <div><dt>Prazo</dt><dd>{{ current.due_at | date:'dd/MM/yyyy HH:mm' }}</dd></div>
-          <div><dt>Quadro</dt><dd>{{ current.board?.title || 'Indisponível' }}</dd></div>
-          <div><dt>Coluna</dt><dd>{{ current.column?.title || 'Indisponível' }}</dd></div>
-          <div><dt>Criada em</dt><dd>{{ current.created_at | date:'dd/MM/yyyy HH:mm' }}</dd></div>
-          @if (current.accepted_at) { <div><dt>Aceita em</dt><dd>{{ current.accepted_at | date:'dd/MM/yyyy HH:mm' }}</dd></div> }
-          @if (current.completed_at) { <div><dt>Concluída em</dt><dd>{{ current.completed_at | date:'dd/MM/yyyy HH:mm' }}</dd></div> }
-          @if (creatorName()) { <div><dt>Criador</dt><dd>{{ creatorName() }}</dd></div> }
-        </dl>
-        @if (action(); as currentAction) {
-          <div class="task-action">
-            <button class="button primary" type="button" (click)="runAction()" [disabled]="transitioning()">
-              {{ transitioning() ? 'Atualizando…' : actionLabel(currentAction) }}
-            </button>
-          </div>
-        }
-        @if (canWaitForThirdParty()) {
-          <div class="task-action">
-            <button type="button" (click)="thirdPartyFormOpen.set(true)" [disabled]="transitioning()">
-              Aguardar terceiro
-            </button>
-          </div>
-        }
-        @if (thirdPartyFormOpen()) {
-          <div class="third-party-form">
-            <h2>Quem ou o que estamos aguardando?</h2>
-            <label>Descreva a dependência externa
-              <textarea rows="3" [value]="thirdPartyExplanation()"
-                (input)="thirdPartyExplanation.set($any($event.target).value)"></textarea>
-            </label>
-            <div class="row">
-              <button class="button primary" type="button" (click)="waitForThirdParty()" [disabled]="transitioning()">
-                {{ transitioning() ? 'Atualizando…' : 'Confirmar espera' }}
-              </button>
-              <button type="button" (click)="closeThirdPartyForm()" [disabled]="transitioning()">Cancelar</button>
+      <div class="task-detail-layout">
+        <div>
+          <section class="panel task-detail-panel">
+            <div class="task-detail-state">
+              <span class="badge" [attr.data-state]="current.business_state">{{
+                labels[current.business_state]
+              }}</span>
+              <span
+                class="badge"
+                [class.private]="current.is_private"
+                [class.shared]="!current.is_private"
+              >
+                <app-icon [name]="current.is_private ? 'lock' : 'users'" />{{
+                  current.is_private ? 'Privada' : 'Compartilhada'
+                }}
+              </span>
             </div>
-          </div>
-        }
-        @if (feedback()) { <p class="action-feedback" role="status">{{ feedback() }}</p> }
-        @if (actionError()) { <p class="form-error" role="alert">{{ actionError() }}</p> }
-        @if (current.board) {
-          <a class="button" [routerLink]="['/quadros', current.board.id]">Abrir quadro</a>
-        }
-      </section>
-      <section class="panel task-history-panel" aria-label="Histórico da pendência">
-        <h2>Histórico</h2>
-        @for (event of history(); track event.id) {
-          <div class="history-entry">
-            <strong>{{ event.content }}</strong>
-            <span class="small muted">{{ event.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
-          </div>
-        } @empty {
-          <p class="small muted">{{ historyError() || 'Nenhum evento registrado.' }}</p>
-        }
-      </section>
+            <dl class="task-detail-grid">
+              <div>
+                <dt>Responsável</dt>
+                <dd>{{ assigneeName() || 'Nome indisponível' }}</dd>
+              </div>
+              <div>
+                <dt>Prazo</dt>
+                <dd>{{ current.due_at | date: 'dd/MM/yyyy HH:mm' }}</dd>
+              </div>
+              <div>
+                <dt>Quadro</dt>
+                <dd>{{ current.board?.title || 'Indisponível' }}</dd>
+              </div>
+              <div>
+                <dt>Coluna</dt>
+                <dd>{{ current.column?.title || 'Indisponível' }}</dd>
+              </div>
+              <div>
+                <dt>Criada em</dt>
+                <dd>{{ current.created_at | date: 'dd/MM/yyyy HH:mm' }}</dd>
+              </div>
+              @if (current.accepted_at) {
+                <div>
+                  <dt>Aceita em</dt>
+                  <dd>{{ current.accepted_at | date: 'dd/MM/yyyy HH:mm' }}</dd>
+                </div>
+              }
+              @if (current.completed_at) {
+                <div>
+                  <dt>Concluída em</dt>
+                  <dd>{{ current.completed_at | date: 'dd/MM/yyyy HH:mm' }}</dd>
+                </div>
+              }
+              @if (creatorName()) {
+                <div>
+                  <dt>Criador</dt>
+                  <dd>{{ creatorName() }}</dd>
+                </div>
+              }
+            </dl>
+            <div class="task-actions">
+              @if (action(); as currentAction) {
+                <div class="task-action">
+                  <button
+                    class="button primary"
+                    type="button"
+                    (click)="runAction()"
+                    [disabled]="transitioning()"
+                  >
+                    {{ transitioning() ? 'Atualizando…' : actionLabel(currentAction) }}
+                  </button>
+                </div>
+              }
+              @if (canWaitForThirdParty()) {
+                <div class="task-action">
+                  <button
+                    class="button secondary"
+                    type="button"
+                    (click)="thirdPartyFormOpen.set(true)"
+                    [disabled]="transitioning()"
+                  >
+                    Aguardar terceiro
+                  </button>
+                </div>
+              }
+              @if (thirdPartyFormOpen()) {
+                <div class="third-party-form">
+                  <h2>Quem ou o que estamos aguardando?</h2>
+                  <label
+                    >Descreva a dependência externa
+                    <textarea
+                      rows="3"
+                      [value]="thirdPartyExplanation()"
+                      (input)="thirdPartyExplanation.set($any($event.target).value)"
+                    ></textarea>
+                  </label>
+                  <div class="row">
+                    <button
+                      class="button primary"
+                      type="button"
+                      (click)="waitForThirdParty()"
+                      [disabled]="transitioning()"
+                    >
+                      {{ transitioning() ? 'Atualizando…' : 'Confirmar espera' }}
+                    </button>
+                    <button
+                      type="button"
+                      (click)="closeThirdPartyForm()"
+                      [disabled]="transitioning()"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              }
+              @if (feedback()) {
+                <p class="action-feedback" role="status">{{ feedback() }}</p>
+              }
+              @if (actionError()) {
+                <p class="form-error" role="alert">{{ actionError() }}</p>
+              }
+              @if (current.board) {
+                <a class="button tertiary" [routerLink]="['/quadros', current.board.id]"
+                  >Abrir quadro</a
+                >
+              }
+            </div>
+          </section>
+        </div>
+        <aside class="panel task-history-panel" aria-label="Histórico da pendência">
+          <h2>Histórico</h2>
+          @for (event of history(); track event.id) {
+            <div class="history-entry">
+              <strong>{{ event.content }}</strong>
+              <span class="small muted">{{ event.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
+            </div>
+          } @empty {
+            <p class="small muted">{{ historyError() || 'Nenhum evento registrado.' }}</p>
+          }
+        </aside>
+      </div>
       <section class="panel task-comments-panel" aria-label="Comentários da pendência">
         <h2>Comentários</h2>
         @for (comment of comments(); track comment.id) {
           <article class="comment-entry">
             <div class="row">
               <strong>{{ commentAuthorName(comment.author_id) || 'Autor indisponível' }}</strong>
-              <span class="small muted">{{ comment.created_at | date:'dd/MM/yyyy HH:mm' }}</span>
+              <span class="small muted">{{ comment.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
             </div>
             <p>{{ comment.content }}</p>
           </article>
@@ -93,12 +175,23 @@ import { TasksService } from './tasks.service';
           <p class="small muted">{{ commentsError() || 'Nenhum comentário registrado.' }}</p>
         }
         <div class="comment-form">
-          <label>Adicionar comentário
-            <textarea rows="3" [value]="commentText()"
-              (input)="commentText.set($any($event.target).value)"></textarea>
+          <label
+            >Adicionar comentário
+            <textarea
+              rows="3"
+              [value]="commentText()"
+              (input)="commentText.set($any($event.target).value)"
+            ></textarea>
           </label>
-          @if (commentError()) { <p class="form-error" role="alert">{{ commentError() }}</p> }
-          <button class="button primary" type="button" (click)="submitComment()" [disabled]="commenting()">
+          @if (commentError()) {
+            <p class="form-error" role="alert">{{ commentError() }}</p>
+          }
+          <button
+            class="button primary"
+            type="button"
+            (click)="submitComment()"
+            [disabled]="commenting()"
+          >
             {{ commenting() ? 'Enviando…' : 'Comentar' }}
           </button>
         </div>
@@ -153,8 +246,11 @@ export class TaskDetailPage {
   });
   readonly canWaitForThirdParty = computed(() => {
     const task = this.task();
-    return !!task && task.business_state === 'fazendo'
-      && this.auth.session()?.user.id === task.assignee_id;
+    return (
+      !!task &&
+      task.business_state === 'fazendo' &&
+      this.auth.session()?.user.id === task.assignee_id
+    );
   });
   readonly labels = BUSINESS_STATE_LABELS;
 
@@ -163,7 +259,9 @@ export class TaskDetailPage {
       const id = this.params()?.get('id') ?? '';
       this.attempt();
       let active = true;
-      onCleanup(() => { active = false; });
+      onCleanup(() => {
+        active = false;
+      });
       this.result.set({ status: 'loading' });
       this.assignees.set([]);
       this.history.set([]);
@@ -228,7 +326,11 @@ export class TaskDetailPage {
   private nameFor(id: string | undefined): string {
     if (!id) return '';
     if (this.auth.profile()?.id === id) return this.auth.displayName();
-    return this.assignees().find((person) => person.id === id)?.display_name?.trim() || '';
+    return (
+      this.assignees()
+        .find((person) => person.id === id)
+        ?.display_name?.trim() || ''
+    );
   }
 
   commentAuthorName(id: string): string {
@@ -237,7 +339,9 @@ export class TaskDetailPage {
 
   actionLabel(action: 'accept' | 'start' | 'complete' | 'resume'): string {
     return {
-      accept: 'Aceitar pendência', start: 'Iniciar pendência', complete: 'Concluir pendência',
+      accept: 'Aceitar pendência',
+      start: 'Iniciar pendência',
+      complete: 'Concluir pendência',
       resume: 'Retomar pendência',
     }[action];
   }
@@ -277,9 +381,11 @@ export class TaskDetailPage {
       else await this.service.resume(task.id);
 
       await this.refreshTaskContent(task.id);
-      this.feedback.set(action === 'complete'
-        ? 'Pendência concluída com sucesso.'
-        : 'Pendência atualizada com sucesso.');
+      this.feedback.set(
+        action === 'complete'
+          ? 'Pendência concluída com sucesso.'
+          : 'Pendência atualizada com sucesso.',
+      );
     } catch {
       this.actionError.set('Não foi possível atualizar a pendência. Tente novamente.');
     } finally {

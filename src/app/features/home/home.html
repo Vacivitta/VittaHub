@@ -1,21 +1,20 @@
 <app-page-heading
   title="Olá, Pessoa Teste"
   description="Um olhar sobre o seu dia e o que a equipe está construindo."
-  eyebrow="Bem-Vindo À VittaHub"
-  ><span class="date-label"
-    >{{ date }}<small>Data de referência da demonstração</small></span
-  ></app-page-heading
+  eyebrow="Bem-vindo ao VittaHub"
 >
+  <span class="date-label">{{ date }}<small>Data de referência da demonstração</small></span>
+</app-page-heading>
 <section class="welcome-banner">
   <div>
     <span class="eyebrow">CUIDAR COMEÇA COM ORGANIZAR</span>
     <h2>Seu trabalho, mais conectado.</h2>
     <p>Acompanhe suas pendências e encontre a equipe em um só lugar.</p>
     <a class="button light" routerLink="/minhas-pendencias"
-      >Ver minhas pendências <span aria-hidden="true">↗</span></a
-    >
+      >Ver minhas pendências <app-icon name="arrow-right"
+    /></a>
   </div>
-  <div class="banner-art" aria-hidden="true"><span>✓</span><span>✧</span><span>✓</span></div>
+  <div class="banner-art" aria-hidden="true"><img src="/brand/vacivitta-symbol.png" alt="" /></div>
 </section>
 <section class="stats-grid" aria-label="Resumo das minhas pendências">
   @for (stat of stats; track stat.label) {
@@ -31,35 +30,41 @@
   <section>
     <div class="section-heading">
       <h2>Em foco</h2>
-      <a routerLink="/minhas-pendencias">Ver todas →</a>
+      <a routerLink="/minhas-pendencias">Ver todas</a>
     </div>
     <div class="task-list">
       @for (task of upcoming; track task.id) {
         <app-task-card [task]="task" />
+      } @empty {
+        <div class="panel empty">
+          <h3>Tudo em dia</h3>
+          <p>Você não tem pendências em foco agora.</p>
+        </div>
       }
     </div>
   </section>
   <section>
     <div class="section-heading">
       <h2>Seus quadros</h2>
-      <a routerLink="/quadros">Explorar →</a>
+      <a routerLink="/quadros">Explorar</a>
     </div>
     <div class="panel board-shortcuts">
       @for (board of boards; track board.id) {
-        <a [routerLink]="['/quadros', board.id]"
-          ><span class="board-icon" aria-hidden="true">▦</span
-          ><span
+        <a [routerLink]="['/quadros', board.id]">
+          <span class="board-icon"><app-icon name="boards" /></span>
+          <span
             ><strong>{{ board.title }}</strong
             ><small>{{ board.area }}</small></span
-          ><span aria-hidden="true">↗</span></a
-        >
+          >
+          <app-icon name="arrow-right" />
+        </a>
       }
     </div>
     <div class="chat-callout">
       <span class="eyebrow">CONVERSAS QUE APROXIMAM</span>
       <h3>Um espaço para alinhar ideias.</h3>
       <p>Veja as conversas de exemplo da equipe.</p>
-      <a routerLink="/chat">Ir para o chat →</a>
+      <a routerLink="/chat">Ir para o chat</a>
     </div>
   </section>
 </div>

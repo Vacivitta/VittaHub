@@ -1,68 +1,77 @@
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { Icon } from '../../shared/icon';
 import { PageHeading } from '../../shared/page-heading';
 import { BoardSummary } from './board-summary';
 import { BoardsService } from './boards.service';
-import { RouterLink } from '@angular/router';
+
 @Component({
-  imports: [PageHeading, RouterLink],
+  imports: [PageHeading, RouterLink, Icon],
   template: `
     <app-page-heading
       title="Quadros"
-      description="Cada equipe, um espaço para organizar e acompanhar."
+      description="Encontre os espaços de trabalho dos quais você participa."
     />
     <div class="toolbar">
       <label class="search-field"
-        >Buscar quadro<input
+        >Buscar quadro
+        <app-icon name="search" />
+        <input
           type="search"
           placeholder="Digite o nome de um quadro"
           [disabled]="loading() || !!error()"
           [value]="query()"
-          (input)="query.set($any($event.target).value)" /></label
-      >
+          (input)="query.set($any($event.target).value)"
+        />
+      </label>
       @if (!loading() && !error()) {
-        <span class="muted small" aria-live="polite">{{ filtered().length }} quadros disponíveis</span>
+        <span class="muted small" aria-live="polite"
+          >{{ filtered().length }} quadros disponíveis</span
+        >
       }
     </div>
     @if (loading()) {
       <div class="panel empty" role="status">Carregando quadros…</div>
     } @else if (error()) {
       <div class="panel empty">
+        <h2>Não foi possível carregar os quadros</h2>
         <p role="alert">{{ error() }}</p>
-        <button type="button" (click)="load()">Tentar novamente</button>
+        <button class="button secondary" type="button" (click)="load()">Tentar novamente</button>
       </div>
     } @else {
       <div class="boards-grid">
-      @for (board of filtered(); track board.id) {
-        <a class="board-tile panel" [routerLink]="['/quadros', board.id]">
-          <div class="board-cover">
-            <span aria-hidden="true">▦</span><span class="small">{{ board.department?.name || 'Departamento indisponível' }}</span>
-          </div>
-          <div class="board-body">
-            <h2>{{ board.title }}</h2>
-            <p class="muted">{{ board.description || 'Sem descrição.' }}</p>
-            <div class="row">
-              <span class="small muted">Somente leitura</span>
-              <span class="text-link">Abrir quadro ↗</span>
+        @for (board of filtered(); track board.id) {
+          <a class="board-tile panel" [routerLink]="['/quadros', board.id]">
+            <div class="board-cover">
+              <app-icon name="boards" />
+              <span class="badge">{{ board.department?.name || 'Departamento indisponível' }}</span>
             </div>
+            <div class="board-body">
+              <h2>{{ board.title }}</h2>
+              <p class="muted">{{ board.description || 'Sem descrição.' }}</p>
+              <div class="row">
+                <span class="small muted">Somente leitura</span
+                ><span class="text-link">Abrir quadro <app-icon name="arrow-right" /></span>
+              </div>
+            </div>
+          </a>
+        } @empty {
+          <div class="panel empty">
+            @if (boards().length === 0) {
+              <h2>Nenhum quadro disponível</h2>
+              <p>Você ainda não participa de nenhum quadro.</p>
+            } @else {
+              <h2>Nenhum quadro encontrado</h2>
+              <p>Tente outro nome ou limpe a busca.</p>
+              <button class="button secondary" type="button" (click)="query.set('')">
+                Limpar busca
+              </button>
+            }
           </div>
-        </a>
-      } @empty {
-        <div class="panel empty">
-          @if (boards().length === 0) {
-            <h2>Nenhum quadro disponível</h2>
-            <p>Não há quadros disponíveis para sua conta.</p>
-          } @else {
-            <h2>Nenhum quadro encontrado</h2>
-            <p>Tente outro nome.</p>
-            <button type="button" (click)="query.set('')">Limpar busca</button>
-          }
-        </div>
-      }
+        }
       </div>
     }
-    <p class="note">
-      Criação e edição de quadros estarão disponíveis em uma próxima etapa.
-    </p>
+    <p class="note">Criação e edição de quadros estarão disponíveis em uma próxima etapa.</p>
   `,
 })
 export class Boards implements OnInit {
@@ -73,10 +82,13 @@ export class Boards implements OnInit {
   readonly error = signal('');
   readonly query = signal('');
   readonly filtered = computed(() =>
-    this.boards().filter((b) =>
-      b.title.toLocaleLowerCase('pt-BR').includes(this.query().trim().toLocaleLowerCase('pt-BR')),
+    this.boards().filter((board) =>
+      board.title
+        .toLocaleLowerCase('pt-BR')
+        .includes(this.query().trim().toLocaleLowerCase('pt-BR')),
     ),
   );
+
   ngOnInit(): void {
     void this.load();
   }
@@ -89,9 +101,8 @@ export class Boards implements OnInit {
       const boards = await this.service.list();
       if (!this.destroyRef.destroyed) this.boards.set(boards);
     } catch {
-      if (!this.destroyRef.destroyed) {
+      if (!this.destroyRef.destroyed)
         this.error.set('Não foi possível carregar os quadros. Tente novamente.');
-      }
     } finally {
       if (!this.destroyRef.destroyed) this.loading.set(false);
     }

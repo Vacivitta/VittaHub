@@ -2,46 +2,77 @@ import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { Icon } from '../../shared/icon';
+
 @Component({
-  imports: [RouterLink, ReactiveFormsModule],
+  imports: [RouterLink, ReactiveFormsModule, Icon],
   template: `
     <main class="login-page">
-      <section class="login-story">
-        <a class="brand" routerLink="/login"
-          ><span class="brand-mark" aria-hidden="true">v</span>vacivitta.</a
-        >
-        <div>
-          <p class="eyebrow">PESSOAS CONECTADAS. ROTINA ORGANIZADA.</p>
-          <h1>Mais perto da equipe.<br />Mais leve no dia a dia.</h1>
-          <p>Um espaço para acompanhar pendências, organizar ideias e conversar.</p>
+      <section class="login-story" aria-labelledby="brand-headline">
+        <a class="login-brand" routerLink="/login" aria-label="VittaHub, página de acesso">
+          <img src="/brand/vacivitta-logo-horizontal.png" alt="Vacivitta Saúde Integrada" />
+          <span>VittaHub</span>
+        </a>
+        <div class="story-copy">
+          <h1 id="brand-headline">Organize sua equipe<br />com mais clareza.</h1>
+          <p>Acompanhe quadros, pendências e conversas em um espaço simples e intuitivo.</p>
+          <div class="login-motto">
+            <app-icon name="sparkle" />
+            <strong>Juntos, no mesmo ritmo.</strong>
+            <span>Mais clareza para organizar.<br />Mais tempo para cuidar.</span>
+          </div>
         </div>
-        <span class="small">Cuidar começa com organizar.</span>
+        <img class="story-symbol" src="/brand/vacivitta-symbol.png" alt="" aria-hidden="true" />
       </section>
-      <section class="login-form panel" aria-labelledby="login-title">
-        <span class="demo-pill">Acesso local</span>
-        <h2 id="login-title">Boas-vindas ao VittaHub</h2>
-        <p class="muted">Entre com sua conta de teste autorizada.</p>
-        <form [formGroup]="form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="busy()">
-          <label for="email">E-mail</label>
-          <input id="email" type="email" formControlName="email" autocomplete="username"
-            [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
-            aria-describedby="email-error" />
-          <span id="email-error" class="small">
-            @if (form.controls.email.touched && form.controls.email.invalid) { Informe um e-mail válido. }
-          </span>
-          <label for="password">Senha</label>
-          <input id="password" type="password" formControlName="password" autocomplete="current-password"
-            [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
-            aria-describedby="password-error" />
-          <span id="password-error" class="small">
-            @if (form.controls.password.touched && form.controls.password.invalid) { Informe sua senha. }
-          </span>
-          @if (error()) { <p role="alert">{{ error() }}</p> }
-          <button class="button primary" type="submit" [disabled]="busy()">
-            {{ busy() ? 'Entrando…' : 'Entrar →' }}
-          </button>
-        </form>
-        <p class="small muted">Ambiente local de testes. Sem cadastro público.</p>
+      <section class="login-area">
+        <div class="login-form panel" aria-labelledby="login-title">
+          <h2 id="login-title">Entrar no VittaHub</h2>
+          <p class="muted">Use sua conta autorizada para acessar o espaço da Vacivitta.</p>
+          <form [formGroup]="form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="busy()">
+            <label for="email">E-mail</label>
+            <input
+              id="email"
+              type="email"
+              formControlName="email"
+              autocomplete="username"
+              placeholder="voce@exemplo.com"
+              [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
+              aria-describedby="email-error"
+            />
+            <span id="email-error" class="field-message">
+              @if (form.controls.email.touched && form.controls.email.invalid) {
+                Informe um e-mail válido.
+              }
+            </span>
+            <label for="password">Senha</label>
+            <input
+              id="password"
+              type="password"
+              formControlName="password"
+              autocomplete="current-password"
+              placeholder="Digite sua senha"
+              [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
+              aria-describedby="password-error"
+            />
+            <span id="password-error" class="field-message">
+              @if (form.controls.password.touched && form.controls.password.invalid) {
+                Informe sua senha.
+              }
+            </span>
+            @if (error()) {
+              <p class="feedback error" role="alert">{{ error() }}</p>
+            }
+            <button class="button primary login-submit" type="submit" [disabled]="busy()">
+              {{ busy() ? 'Entrando…' : 'Entrar' }}<app-icon name="arrow-right" />
+            </button>
+          </form>
+          <div class="secure-note">
+            <app-icon name="lock" /><span>Ambiente seguro · Acesso autenticado</span>
+          </div>
+          <p class="small muted access-note">
+            Sem cadastro público. O acesso é disponibilizado pela administração.
+          </p>
+        </div>
       </section>
     </main>
   `,
@@ -53,7 +84,10 @@ export class Login {
   readonly busy = signal(false);
   readonly error = signal('');
   readonly form = new FormGroup({
-    email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
+    email: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.email],
+    }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
 

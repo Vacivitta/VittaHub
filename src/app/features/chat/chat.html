@@ -1,7 +1,13 @@
 <app-page-heading title="Chat" description="Conversas individuais da equipe." />
 <div class="chat-layout panel">
   <aside class="conversation-list" aria-label="Conversas">
-    <h2>Conversas VittaHub</h2>
+    <div class="list-heading">
+      <div>
+        <span class="eyebrow">MENSAGENS</span>
+        <h2>Conversas</h2>
+      </div>
+      <app-icon name="chat" />
+    </div>
     @if (listLoading()) {
       <p class="note" role="status">Carregando conversas…</p>
     } @else if (listError()) {
@@ -22,7 +28,7 @@
             <span class="avatar">{{ item.initials }}</span>
             <span>
               <strong>{{ item.name }}</strong>
-              <small>{{ item.conversation.last_activity_at | date:'dd/MM HH:mm' }}</small>
+              <small>{{ item.conversation.last_activity_at | date: 'dd/MM HH:mm' }}</small>
             </span>
           </button>
         } @empty {
@@ -59,10 +65,14 @@
           <article class="message" [class.own]="isOwn(message)">
             <span class="message-author">{{ authorName(message) }}</span>
             <p>{{ message.content }}</p>
-            <time [attr.datetime]="message.created_at">{{ message.created_at | date:'HH:mm' }}</time>
+            <time [attr.datetime]="message.created_at">{{
+              message.created_at | date: 'HH:mm'
+            }}</time>
           </article>
         } @empty {
-          <p class="note empty-history" role="status">A conversa começa por aqui. Envie a primeira mensagem ao seu colega.</p>
+          <p class="note empty-history" role="status">
+            A conversa começa por aqui. Envie a primeira mensagem ao seu colega.
+          </p>
         }
       </div>
       <div class="composer">
@@ -77,11 +87,18 @@
             (input)="draft.set($any($event.target).value); sendError.set('')"
             (keydown)="handleComposerKeydown($event)"
           ></textarea>
-          <button type="button" [disabled]="sending() || !draft().trim()" (click)="send()">
-            {{ sending() ? 'Enviando…' : 'Enviar' }}
+          <button
+            class="button primary"
+            type="button"
+            [disabled]="sending() || !draft().trim()"
+            (click)="send()"
+          >
+            {{ sending() ? 'Enviando…' : 'Enviar' }}<app-icon name="arrow-right" />
           </button>
         </div>
-        @if (sendError()) { <p class="form-error" role="alert">{{ sendError() }}</p> }
+        @if (sendError()) {
+          <p class="form-error" role="alert">{{ sendError() }}</p>
+        }
         <p class="small muted">Enter envia. Shift+Enter adiciona uma nova linha.</p>
       </div>
     }

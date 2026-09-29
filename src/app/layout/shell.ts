@@ -1,8 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
+import { Icon, IconName } from '../shared/icon';
+
 @Component({
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, Icon],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
 })
@@ -12,12 +14,12 @@ export class Shell {
   readonly logoutError = signal('');
   readonly menuOpen = signal(false);
   readonly links = [
-    { path: '/inicio', label: 'Início', icon: '⌂' },
-    { path: '/quadros', label: 'Quadros', icon: '▦' },
-    { path: '/minhas-pendencias', label: 'Minhas Pendências', icon: '✓' },
-    { path: '/chat', label: 'Chat', icon: '☏' },
-    { path: '/administracao', label: 'Administração', icon: '⚙' },
-  ];
+    { path: '/inicio', label: 'Início', icon: 'home' },
+    { path: '/quadros', label: 'Quadros', icon: 'boards' },
+    { path: '/minhas-pendencias', label: 'Minhas Pendências', icon: 'tasks' },
+    { path: '/chat', label: 'Chat', icon: 'chat' },
+    { path: '/administracao', label: 'Administração', icon: 'settings' },
+  ] satisfies { path: string; label: string; icon: IconName }[];
 
   async logout(): Promise<void> {
     if (this.signingOut()) return;

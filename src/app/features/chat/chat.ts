@@ -5,6 +5,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { PageHeading } from '../../shared/page-heading';
 import { ChatConversation, ChatMessage, ConversationParticipant } from './chat.models';
 import { ChatService } from './chat.service';
+import { Icon } from '../../shared/icon';
 
 interface ConversationListItem {
   conversation: ChatConversation;
@@ -13,7 +14,7 @@ interface ConversationListItem {
 }
 
 @Component({
-  imports: [PageHeading, DatePipe],
+  imports: [PageHeading, DatePipe, Icon],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
@@ -52,17 +53,23 @@ export class Chat implements OnDestroy {
     this.listLoading.set(true);
     this.listError.set('');
     try {
-      const conversations = (await this.service.listMyConversations())
-        .filter((conversation) => conversation.kind === 'individual');
-      const items = await Promise.all(conversations.map(async (conversation) => {
-        const participants = await this.service.listConversationParticipants(conversation.id);
-        const other = participants.find((participant) => participant.user_id !== this.currentUserId());
-        const name = other?.display_name?.trim() || 'Conversa individual';
-        return { conversation, name, initials: this.initials(name) };
-      }));
+      const conversations = (await this.service.listMyConversations()).filter(
+        (conversation) => conversation.kind === 'individual',
+      );
+      const items = await Promise.all(
+        conversations.map(async (conversation) => {
+          const participants = await this.service.listConversationParticipants(conversation.id);
+          const other = participants.find(
+            (participant) => participant.user_id !== this.currentUserId(),
+          );
+          const name = other?.display_name?.trim() || 'Conversa individual';
+          return { conversation, name, initials: this.initials(name) };
+        }),
+      );
       if (!this.destroyed) this.conversations.set(items);
     } catch {
-      if (!this.destroyed) this.listError.set('Não foi possível carregar suas conversas. Tente novamente.');
+      if (!this.destroyed)
+        this.listError.set('Não foi possível carregar suas conversas. Tente novamente.');
     } finally {
       if (!this.destroyed) this.listLoading.set(false);
     }
@@ -119,13 +126,15 @@ export class Chat implements OnDestroy {
       const id = await this.service.sendMessage(item.conversation.id, content);
       this.draft.set('');
       if (this.selected()?.conversation.id === item.conversation.id) {
-        this.mergeMessages([{
-          id,
-          conversation_id: item.conversation.id,
-          author_id: this.currentUserId(),
-          content,
-          created_at: new Date().toISOString(),
-        }]);
+        this.mergeMessages([
+          {
+            id,
+            conversation_id: item.conversation.id,
+            author_id: this.currentUserId(),
+            content,
+            created_at: new Date().toISOString(),
+          },
+        ]);
       }
     } catch {
       this.sendError.set('Não foi possível enviar a mensagem. Tente novamente.');
@@ -142,8 +151,11 @@ export class Chat implements OnDestroy {
 
   authorName(message: ChatMessage): string {
     if (message.author_id === this.currentUserId()) return 'Você';
-    return this.participants().find((participant) => participant.user_id === message.author_id)
-      ?.display_name?.trim() || 'Participante';
+    return (
+      this.participants()
+        .find((participant) => participant.user_id === message.author_id)
+        ?.display_name?.trim() || 'Participante'
+    );
   }
 
   isOwn(message: ChatMessage): boolean {
@@ -155,7 +167,13 @@ export class Chat implements OnDestroy {
   }
 
   private initials(name: string): string {
-    return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase();
   }
 
   private async removeActiveSubscription(): Promise<void> {
@@ -170,18 +188,29 @@ export class Chat implements OnDestroy {
     }
   }
 
-  private receiveRealtimeMessage(conversationId: string, revision: number, message: ChatMessage): void {
-    if (this.destroyed || revision !== this.conversationRevision
-      || this.selected()?.conversation.id !== conversationId
-      || message.conversation_id !== conversationId) return;
+  private receiveRealtimeMessage(
+    conversationId: string,
+    revision: number,
+    message: ChatMessage,
+  ): void {
+    if (
+      this.destroyed ||
+      revision !== this.conversationRevision ||
+      this.selected()?.conversation.id !== conversationId ||
+      message.conversation_id !== conversationId
+    )
+      return;
     this.mergeMessages([message]);
   }
 
   private async synchronizeHistory(conversationId: string, revision: number): Promise<void> {
     try {
       const messages = await this.service.listMessages(conversationId);
-      if (!this.destroyed && revision === this.conversationRevision
-        && this.selected()?.conversation.id === conversationId) {
+      if (
+        !this.destroyed &&
+        revision === this.conversationRevision &&
+        this.selected()?.conversation.id === conversationId
+      ) {
         this.mergeMessages(messages);
       }
     } catch {
@@ -200,7 +229,9 @@ export class Chat implements OnDestroy {
   }
 
   private sorted(messages: ChatMessage[]): ChatMessage[] {
-    return [...messages].sort((left, right) =>
-      left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id));
+    return [...messages].sort(
+      (left, right) =>
+        left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id),
+    );
   }
 }
