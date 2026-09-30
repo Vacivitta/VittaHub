@@ -7,12 +7,25 @@ import { Chat } from './chat';
 
 describe('Chat', () => {
   const first: ChatConversation = {
-    id: 'conversation-1', kind: 'individual', title: null,
-    created_at: '2026-09-28T10:00:00Z', last_activity_at: '2026-09-28T12:00:00Z',
+    id: 'conversation-1',
+    kind: 'individual',
+    title: null,
+    created_at: '2026-09-28T10:00:00Z',
+    last_activity_at: '2026-09-28T12:00:00Z',
   };
   const second: ChatConversation = {
-    id: 'conversation-2', kind: 'individual', title: null,
-    created_at: '2026-09-28T09:00:00Z', last_activity_at: '2026-09-28T11:00:00Z',
+    id: 'conversation-2',
+    kind: 'individual',
+    title: null,
+    created_at: '2026-09-28T09:00:00Z',
+    last_activity_at: '2026-09-28T11:00:00Z',
+  };
+  const group: ChatConversation = {
+    id: 'group-1',
+    kind: 'grupo',
+    title: 'Operação da Unidade',
+    created_at: '2026-09-28T12:00:00Z',
+    last_activity_at: '2026-09-28T13:00:00Z',
   };
   const participants: Record<string, ConversationParticipant[]> = {
     'conversation-1': [
@@ -25,15 +38,26 @@ describe('Chat', () => {
     ],
   };
   const older: ChatMessage = {
-    id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-2',
-    content: 'Mensagem recebida', created_at: '2026-09-28T10:00:00Z',
+    id: 'message-1',
+    conversation_id: 'conversation-1',
+    author_id: 'user-2',
+    content: 'Mensagem recebida',
+    created_at: '2026-09-28T10:00:00Z',
   };
   const newer: ChatMessage = {
-    id: 'message-2', conversation_id: 'conversation-1', author_id: 'user-1',
-    content: 'Mensagem própria', created_at: '2026-09-28T11:00:00Z',
+    id: 'message-2',
+    conversation_id: 'conversation-1',
+    author_id: 'user-1',
+    content: 'Mensagem própria',
+    created_at: '2026-09-28T11:00:00Z',
   };
 
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
+  const profile = signal<{
+    id: string;
+    display_name: string | null;
+    role: 'membro' | 'gestor' | 'administrador';
+  } | null>({ id: 'user-1', display_name: 'Pessoa Atual', role: 'membro' });
   const listMyConversations = vi.fn();
   const listConversationParticipants = vi.fn();
   const listMessages = vi.fn();
@@ -42,6 +66,7 @@ describe('Chat', () => {
   const removeMessageSubscription = vi.fn();
   const listDirectChatCandidates = vi.fn();
   const getOrCreateDirectConversation = vi.fn();
+  const createGroupConversation = vi.fn();
   const subscriptions: Array<{
     conversationId: string;
     onMessage: (message: ChatMessage) => void;
@@ -52,36 +77,53 @@ describe('Chat', () => {
   beforeEach(() => {
     subscriptions.length = 0;
     session.set({ user: { id: 'user-1' } });
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'membro' });
     listMyConversations.mockReset().mockResolvedValue([first, second]);
-    listConversationParticipants.mockReset()
+    listConversationParticipants
+      .mockReset()
       .mockImplementation((id: string) => Promise.resolve(participants[id] ?? []));
-    listMessages.mockReset().mockImplementation((id: string) =>
-      Promise.resolve(id === first.id ? [newer, older] : []));
+    listMessages
+      .mockReset()
+      .mockImplementation((id: string) => Promise.resolve(id === first.id ? [newer, older] : []));
     sendMessage.mockReset().mockResolvedValue('message-new');
-    subscribeToMessages.mockReset().mockImplementation((
-      conversationId: string,
-      onMessage: (message: ChatMessage) => void,
-      onSubscribed: () => void,
-    ) => {
-      const channel = { id: subscriptions.length + 1 };
-      subscriptions.push({ conversationId, onMessage, onSubscribed, channel });
-      return channel;
-    });
+    subscribeToMessages
+      .mockReset()
+      .mockImplementation(
+        (
+          conversationId: string,
+          onMessage: (message: ChatMessage) => void,
+          onSubscribed: () => void,
+        ) => {
+          const channel = { id: subscriptions.length + 1 };
+          subscriptions.push({ conversationId, onMessage, onSubscribed, channel });
+          return channel;
+        },
+      );
     removeMessageSubscription.mockReset().mockResolvedValue(undefined);
     listDirectChatCandidates.mockReset().mockResolvedValue([
       { user_id: 'user-2', display_name: 'Ana Silva' },
       { user_id: 'user-3', display_name: 'Bruno Souza' },
     ]);
     getOrCreateDirectConversation.mockReset().mockResolvedValue('conversation-2');
+    createGroupConversation.mockReset().mockResolvedValue('group-1');
     TestBed.configureTestingModule({
       imports: [Chat],
       providers: [
-        { provide: AuthService, useValue: { session } },
-        { provide: ChatService, useValue: {
-          listMyConversations, listConversationParticipants, listMessages, sendMessage,
-          subscribeToMessages, removeMessageSubscription, listDirectChatCandidates,
-          getOrCreateDirectConversation,
-        } },
+        { provide: AuthService, useValue: { session, profile } },
+        {
+          provide: ChatService,
+          useValue: {
+            listMyConversations,
+            listConversationParticipants,
+            listMessages,
+            sendMessage,
+            subscribeToMessages,
+            removeMessageSubscription,
+            listDirectChatCandidates,
+            getOrCreateDirectConversation,
+            createGroupConversation,
+          },
+        },
       ],
     });
   });
@@ -95,14 +137,21 @@ describe('Chat', () => {
   }
 
   async function openFirst(fixture: ComponentFixture<Chat>): Promise<void> {
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.conversation')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.conversation')!
+      .click();
     await vi.waitFor(() => expect(fixture.componentInstance.conversationLoading()).toBe(false));
     fixture.detectChanges();
   }
 
   it('shows loading and then lists real individual conversations using the other participant name', async () => {
     let resolve!: (value: ChatConversation[]) => void;
-    listMyConversations.mockImplementation(() => new Promise<ChatConversation[]>((done) => { resolve = done; }));
+    listMyConversations.mockImplementation(
+      () =>
+        new Promise<ChatConversation[]>((done) => {
+          resolve = done;
+        }),
+    );
     const fixture = TestBed.createComponent(Chat);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Carregando conversas');
@@ -110,14 +159,18 @@ describe('Chat', () => {
     resolve([first]);
     await vi.waitFor(() => expect(fixture.componentInstance.listLoading()).toBe(false));
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.conversation')?.textContent).toContain('Pessoa Teste 2');
-    expect(fixture.nativeElement.querySelector('.conversation')?.textContent).not.toContain('Pessoa Atual');
+    expect(fixture.nativeElement.querySelector('.conversation')?.textContent).toContain(
+      'Pessoa Teste 2',
+    );
+    expect(fixture.nativeElement.querySelector('.conversation')?.textContent).not.toContain(
+      'Pessoa Atual',
+    );
   });
 
   it('shows the empty state when there are no existing individual conversations', async () => {
     listMyConversations.mockResolvedValue([]);
     const fixture = await render();
-    expect(fixture.nativeElement.textContent).toContain('Nenhuma conversa individual disponível');
+    expect(fixture.nativeElement.textContent).toContain('Nenhuma conversa disponível');
     expect(fixture.nativeElement.querySelector('.conversation')).toBeNull();
   });
 
@@ -132,12 +185,104 @@ describe('Chat', () => {
     expect(fixture.nativeElement.textContent).toContain('Ana Silva');
     expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
 
-    const input = fixture.nativeElement.querySelector('.candidate-search input') as HTMLInputElement;
+    const input = fixture.nativeElement.querySelector(
+      '.candidate-search input',
+    ) as HTMLInputElement;
     input.value = 'bruno';
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('Ana Silva');
     expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
+  });
+
+  it.each(['gestor', 'administrador'] as const)('%s sees the Novo grupo action', async (role) => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role });
+    const fixture = await render();
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button'),
+    ).map((button) => button.textContent?.trim());
+    expect(labels).toContain('Novo grupo');
+  });
+
+  it('member does not see the Novo grupo action', async () => {
+    const fixture = await render();
+    expect(fixture.nativeElement.textContent).not.toContain('Novo grupo');
+    await fixture.componentInstance.openNewGroup();
+    expect(fixture.componentInstance.newGroupOpen()).toBe(false);
+    expect(listDirectChatCandidates).not.toHaveBeenCalled();
+  });
+
+  it('opens the group dialog, loads candidates, filters locally and supports multiple selection', async () => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'gestor' });
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    await page.openNewGroup();
+    fixture.detectChanges();
+    expect(listDirectChatCandidates).toHaveBeenCalledOnce();
+    expect(fixture.nativeElement.textContent).toContain('Ana Silva');
+    expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
+    expect(page.canSubmitGroup()).toBe(false);
+
+    page.groupCandidateQuery.set('bruno');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('Ana Silva');
+    expect(fixture.nativeElement.textContent).toContain('Bruno Souza');
+    page.toggleGroupParticipant('user-2');
+    page.toggleGroupParticipant('user-3');
+    expect(page.selectedGroupParticipantIds().size).toBe(2);
+    expect(page.canSubmitGroup()).toBe(false);
+    page.groupName.set('Equipe Administrativa');
+    expect(page.canSubmitGroup()).toBe(true);
+  });
+
+  it('creates, refreshes and selects a named group, then uses the existing send flow', async () => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'administrador' });
+    listMyConversations
+      .mockReset()
+      .mockResolvedValueOnce([first, second])
+      .mockResolvedValueOnce([group, first, second]);
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    await page.openNewGroup();
+    page.groupName.set('  Operação da Unidade  ');
+    page.toggleGroupParticipant('user-2');
+    page.toggleGroupParticipant('user-3');
+    await page.createGroup();
+    fixture.detectChanges();
+
+    expect(createGroupConversation).toHaveBeenCalledExactlyOnceWith('  Operação da Unidade  ', [
+      'user-2',
+      'user-3',
+    ]);
+    expect(listMyConversations).toHaveBeenCalledTimes(2);
+    expect(page.newGroupOpen()).toBe(false);
+    expect(page.selected()?.conversation.id).toBe('group-1');
+    expect(page.selected()?.name).toBe('Operação da Unidade');
+    expect(fixture.nativeElement.textContent).toContain('Conversa em grupo');
+    expect(fixture.nativeElement.textContent).toContain('A conversa começa por aqui');
+    expect(subscriptions.at(-1)?.conversationId).toBe('group-1');
+
+    page.draft.set('Mensagem para o grupo');
+    await page.send();
+    expect(sendMessage).toHaveBeenLastCalledWith('group-1', 'Mensagem para o grupo');
+  });
+
+  it('keeps the group dialog usable when creation fails', async () => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'gestor' });
+    createGroupConversation.mockRejectedValue(new Error('private detail'));
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    await page.openNewGroup();
+    page.groupName.set('Projetos e Melhorias');
+    page.toggleGroupParticipant('user-2');
+    await page.createGroup();
+    fixture.detectChanges();
+    expect(page.newGroupOpen()).toBe(true);
+    expect(page.creatingGroup()).toBe(false);
+    expect(page.groupName()).toBe('Projetos e Melhorias');
+    expect(page.selectedGroupParticipantIds().has('user-2')).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Não foi possível criar o grupo');
+    expect(fixture.nativeElement.textContent).not.toContain('private detail');
   });
 
   it('opens the returned conversation after refreshing the conversation list', async () => {
@@ -167,22 +312,28 @@ describe('Chat', () => {
   });
 
   it('shows a friendly list error and retries safely', async () => {
-    listMyConversations.mockRejectedValueOnce(new Error('private detail')).mockResolvedValueOnce([]);
+    listMyConversations
+      .mockRejectedValueOnce(new Error('private detail'))
+      .mockResolvedValueOnce([]);
     const fixture = await render();
     expect(fixture.nativeElement.textContent).toContain('Não foi possível carregar suas conversas');
     expect(fixture.nativeElement.textContent).not.toContain('private detail');
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.list-feedback button')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.list-feedback button')!
+      .click();
     await fixture.whenStable();
     fixture.detectChanges();
     expect(listMyConversations).toHaveBeenCalledTimes(2);
-    expect(fixture.nativeElement.textContent).toContain('Nenhuma conversa individual disponível');
+    expect(fixture.nativeElement.textContent).toContain('Nenhuma conversa disponível');
   });
 
   it('selects a conversation and loads its participants and persistent history in stable order', async () => {
     const fixture = await render();
     await openFirst(fixture);
     expect(listMessages).toHaveBeenCalledWith('conversation-1');
-    const rendered = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.message');
+    const rendered = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      '.message',
+    );
     expect(rendered).toHaveLength(2);
     expect(rendered[0].textContent).toContain('Mensagem recebida');
     expect(rendered[1].textContent).toContain('Mensagem própria');
@@ -194,9 +345,16 @@ describe('Chat', () => {
 
   it('shows loading while opening and a generic message when history is inaccessible', async () => {
     let reject!: (error: Error) => void;
-    listMessages.mockImplementation(() => new Promise<ChatMessage[]>((_resolve, fail) => { reject = fail; }));
+    listMessages.mockImplementation(
+      () =>
+        new Promise<ChatMessage[]>((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
     const fixture = await render();
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.conversation')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.conversation')!
+      .click();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Carregando histórico');
     await vi.waitFor(() => expect(listMessages).toHaveBeenCalledWith('conversation-1'));
@@ -220,7 +378,12 @@ describe('Chat', () => {
 
   it('sends once, clears the field and immediately adds the persisted message acknowledgement', async () => {
     let resolve!: (id: string) => void;
-    sendMessage.mockImplementation(() => new Promise<string>((done) => { resolve = done; }));
+    sendMessage.mockImplementation(
+      () =>
+        new Promise<string>((done) => {
+          resolve = done;
+        }),
+    );
     const fixture = await render();
     await openFirst(fixture);
     const page = fixture.componentInstance;
@@ -250,7 +413,9 @@ describe('Chat', () => {
 
   it('keeps one subscription, removes it on conversation change and removes the last on destroy', async () => {
     const fixture = await render();
-    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.conversation');
+    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      '.conversation',
+    );
     buttons[0].click();
     await vi.waitFor(() => expect(subscribeToMessages).toHaveBeenCalledTimes(1));
     fixture.detectChanges();
@@ -272,8 +437,11 @@ describe('Chat', () => {
     const fixture = await render();
     await openFirst(fixture);
     const incoming: ChatMessage = {
-      id: 'message-3', conversation_id: 'conversation-1', author_id: 'user-2',
-      content: 'Chegou em tempo real', created_at: '2026-09-28T12:00:00Z',
+      id: 'message-3',
+      conversation_id: 'conversation-1',
+      author_id: 'user-2',
+      content: 'Chegou em tempo real',
+      created_at: '2026-09-28T12:00:00Z',
     };
     subscriptions[0].onMessage(incoming);
     subscriptions[0].onMessage({ ...incoming, content: 'Versão deduplicada' });
@@ -286,10 +454,17 @@ describe('Chat', () => {
   it('resynchronizes persisted history when Realtime subscribes again without duplicating messages', async () => {
     const fixture = await render();
     await openFirst(fixture);
-    listMessages.mockResolvedValue([older, newer, {
-      id: 'message-3', conversation_id: 'conversation-1', author_id: 'user-2',
-      content: 'Recuperada após reconexão', created_at: '2026-09-28T12:00:00Z',
-    }]);
+    listMessages.mockResolvedValue([
+      older,
+      newer,
+      {
+        id: 'message-3',
+        conversation_id: 'conversation-1',
+        author_id: 'user-2',
+        content: 'Recuperada após reconexão',
+        created_at: '2026-09-28T12:00:00Z',
+      },
+    ]);
     subscriptions[0].onSubscribed();
     await vi.waitFor(() => expect(fixture.componentInstance.messages()).toHaveLength(3));
     fixture.detectChanges();

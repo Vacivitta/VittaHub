@@ -1,7 +1,14 @@
-<app-page-heading title="Chat" description="Conversas individuais da equipe.">
-  <button class="button primary" type="button" (click)="openNewConversation()">
-    <app-icon name="plus" /> Nova conversa
-  </button>
+<app-page-heading title="Chat" description="Conversas individuais e em grupo da equipe.">
+  <div class="chat-actions">
+    <button class="button primary" type="button" (click)="openNewConversation()">
+      <app-icon name="plus" /> Nova conversa
+    </button>
+    @if (canCreateGroup()) {
+      <button class="button secondary" type="button" (click)="openNewGroup()">
+        <app-icon name="plus" /> Novo grupo
+      </button>
+    }
+  </div>
 </app-page-heading>
 @if (newConversationOpen()) {
   <button
@@ -10,18 +17,19 @@
     aria-label="Fechar nova conversa"
     (click)="closeNewConversation()"
   ></button>
-  <section
-    class="new-chat-dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="new-chat-title"
-  >
+  <section class="new-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
     <header>
       <div>
         <h2 id="new-chat-title">Nova conversa</h2>
         <p class="muted">Escolha uma pessoa para iniciar ou abrir a conversa individual.</p>
       </div>
-      <button class="icon-button" type="button" aria-label="Fechar" (click)="closeNewConversation()" [disabled]="startingConversation()">
+      <button
+        class="icon-button"
+        type="button"
+        aria-label="Fechar"
+        (click)="closeNewConversation()"
+        [disabled]="startingConversation()"
+      >
         <app-icon name="close" />
       </button>
     </header>
@@ -40,14 +48,24 @@
     } @else if (candidateError()) {
       <div class="candidate-feedback">
         <p role="alert">{{ candidateError() }}</p>
-        <button class="button secondary" type="button" (click)="openNewConversation()" [disabled]="startingConversation()">
+        <button
+          class="button secondary"
+          type="button"
+          (click)="openNewConversation()"
+          [disabled]="startingConversation()"
+        >
           Tentar novamente
         </button>
       </div>
     } @else {
       <div class="candidate-list">
         @for (candidate of filteredCandidates(); track candidate.user_id) {
-          <button type="button" class="candidate" (click)="startConversation(candidate)" [disabled]="startingConversation()">
+          <button
+            type="button"
+            class="candidate"
+            (click)="startConversation(candidate)"
+            [disabled]="startingConversation()"
+          >
             <span class="avatar">{{ candidateInitials(candidate) }}</span>
             <strong>{{ candidateName(candidate) }}</strong>
           </button>
@@ -56,6 +74,112 @@
         }
       </div>
     }
+  </section>
+}
+@if (newGroupOpen()) {
+  <button
+    class="chat-dialog-backdrop"
+    type="button"
+    aria-label="Fechar novo grupo"
+    (click)="closeNewGroup()"
+  ></button>
+  <section
+    class="new-chat-dialog new-group-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="new-group-title"
+  >
+    <header>
+      <div>
+        <h2 id="new-group-title">Novo grupo</h2>
+        <p class="muted">Dê um nome ao grupo e escolha pelo menos uma pessoa.</p>
+      </div>
+      <button
+        class="icon-button"
+        type="button"
+        aria-label="Fechar"
+        (click)="closeNewGroup()"
+        [disabled]="creatingGroup()"
+      >
+        <app-icon name="close" />
+      </button>
+    </header>
+    <label class="group-name"
+      >Nome do grupo
+      <input
+        type="text"
+        placeholder="Ex.: Operação da Unidade"
+        [value]="groupName()"
+        (input)="groupName.set($any($event.target).value); groupError.set('')"
+        [disabled]="creatingGroup()"
+      />
+    </label>
+    <label class="candidate-search"
+      >Buscar pessoas
+      <input
+        type="search"
+        placeholder="Digite um nome"
+        [value]="groupCandidateQuery()"
+        (input)="groupCandidateQuery.set($any($event.target).value)"
+        [disabled]="groupCandidatesLoading() || creatingGroup()"
+      />
+    </label>
+    <p class="selected-count small muted">
+      {{ selectedGroupParticipantIds().size }} selecionada(s)
+    </p>
+    @if (groupCandidatesLoading()) {
+      <p class="note" role="status">Carregando pessoas…</p>
+    } @else if (groupError() && !groupCandidates().length) {
+      <div class="candidate-feedback">
+        <p role="alert">{{ groupError() }}</p>
+        <button
+          class="button secondary"
+          type="button"
+          (click)="loadGroupCandidates()"
+          [disabled]="creatingGroup()"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    } @else {
+      <div class="candidate-list group-candidate-list">
+        @for (candidate of filteredGroupCandidates(); track candidate.user_id) {
+          <label class="candidate group-candidate">
+            <input
+              type="checkbox"
+              [checked]="selectedGroupParticipantIds().has(candidate.user_id)"
+              (change)="toggleGroupParticipant(candidate.user_id)"
+              [disabled]="creatingGroup()"
+            />
+            <span class="avatar">{{ candidateInitials(candidate) }}</span>
+            <strong>{{ candidateName(candidate) }}</strong>
+          </label>
+        } @empty {
+          <p class="note" role="status">Nenhuma pessoa encontrada.</p>
+        }
+      </div>
+    }
+    @if (groupError() && groupCandidates().length) {
+      <p class="form-error" role="alert">{{ groupError() }}</p>
+    }
+    <footer class="dialog-actions">
+      <button
+        class="button secondary"
+        type="button"
+        (click)="closeNewGroup()"
+        [disabled]="creatingGroup()"
+      >
+        Cancelar
+      </button>
+      <button
+        class="button primary"
+        type="button"
+        (click)="createGroup()"
+        [disabled]="!canSubmitGroup()"
+      >
+        {{ creatingGroup() ? 'Criando…' : 'Criar grupo' }}
+      </button>
+    </footer>
   </section>
 }
 <div class="chat-layout panel">
@@ -91,7 +215,7 @@
             </span>
           </button>
         } @empty {
-          <p class="note" role="status">Nenhuma conversa individual disponível.</p>
+          <p class="note" role="status">Nenhuma conversa disponível.</p>
         }
       </div>
     }
@@ -116,7 +240,7 @@
         <span class="avatar">{{ selected()!.initials }}</span>
         <div>
           <h2>{{ selected()!.name }}</h2>
-          <p class="small muted">Conversa individual</p>
+          <p class="small muted">{{ conversationKindLabel(selected()!) }}</p>
         </div>
       </header>
       <div class="messages" aria-live="polite" aria-label="Histórico de mensagens">
@@ -130,7 +254,7 @@
           </article>
         } @empty {
           <p class="note empty-history" role="status">
-            A conversa começa por aqui. Envie a primeira mensagem ao seu colega.
+            A conversa começa por aqui. Envie a primeira mensagem.
           </p>
         }
       </div>

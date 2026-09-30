@@ -47,9 +47,33 @@ export class Chat implements OnDestroy {
   readonly candidatesLoading = signal(false);
   readonly candidateError = signal('');
   readonly startingConversation = signal(false);
+  readonly canCreateGroup = computed(() => {
+    const role = this.auth.profile()?.role;
+    return role === 'gestor' || role === 'administrador';
+  });
+  readonly newGroupOpen = signal(false);
+  readonly groupName = signal('');
+  readonly groupCandidateQuery = signal('');
+  readonly groupCandidates = signal<DirectChatCandidate[]>([]);
+  readonly selectedGroupParticipantIds = signal<ReadonlySet<string>>(new Set());
+  readonly groupCandidatesLoading = signal(false);
+  readonly groupError = signal('');
+  readonly creatingGroup = signal(false);
+  readonly canSubmitGroup = computed(
+    () =>
+      !!this.groupName().trim() &&
+      this.selectedGroupParticipantIds().size > 0 &&
+      !this.creatingGroup(),
+  );
   readonly filteredCandidates = computed(() => {
     const query = this.candidateQuery().trim().toLocaleLowerCase('pt-BR');
     return this.candidates().filter((candidate) =>
+      (candidate.display_name ?? '').toLocaleLowerCase('pt-BR').includes(query),
+    );
+  });
+  readonly filteredGroupCandidates = computed(() => {
+    const query = this.groupCandidateQuery().trim().toLocaleLowerCase('pt-BR');
+    return this.groupCandidates().filter((candidate) =>
       (candidate.display_name ?? '').toLocaleLowerCase('pt-BR').includes(query),
     );
   });
@@ -70,11 +94,13 @@ export class Chat implements OnDestroy {
     this.listLoading.set(true);
     this.listError.set('');
     try {
-      const conversations = (await this.service.listMyConversations()).filter(
-        (conversation) => conversation.kind === 'individual',
-      );
+      const conversations = await this.service.listMyConversations();
       const items = await Promise.all(
         conversations.map(async (conversation) => {
+          if (conversation.kind === 'grupo') {
+            const name = conversation.title?.trim() || 'Grupo';
+            return { conversation, name, initials: this.initials(name) };
+          }
           const participants = await this.service.listConversationParticipants(conversation.id);
           const other = participants.find(
             (participant) => participant.user_id !== this.currentUserId(),
@@ -89,6 +115,62 @@ export class Chat implements OnDestroy {
         this.listError.set('Não foi possível carregar suas conversas. Tente novamente.');
     } finally {
       if (!this.destroyed) this.listLoading.set(false);
+    }
+  }
+
+  async openNewGroup(): Promise<void> {
+    if (!this.canCreateGroup() || this.creatingGroup()) return;
+    this.newGroupOpen.set(true);
+    this.groupName.set('');
+    this.groupCandidateQuery.set('');
+    this.groupCandidates.set([]);
+    this.selectedGroupParticipantIds.set(new Set());
+    this.groupError.set('');
+    await this.loadGroupCandidates();
+  }
+
+  async loadGroupCandidates(): Promise<void> {
+    this.groupCandidatesLoading.set(true);
+    this.groupError.set('');
+    try {
+      this.groupCandidates.set(await this.service.listDirectChatCandidates());
+    } catch {
+      this.groupError.set('Não foi possível carregar as pessoas disponíveis. Tente novamente.');
+    } finally {
+      this.groupCandidatesLoading.set(false);
+    }
+  }
+
+  closeNewGroup(): void {
+    if (!this.creatingGroup()) this.newGroupOpen.set(false);
+  }
+
+  toggleGroupParticipant(userId: string): void {
+    if (this.creatingGroup()) return;
+    const selected = new Set(this.selectedGroupParticipantIds());
+    if (selected.has(userId)) selected.delete(userId);
+    else selected.add(userId);
+    this.selectedGroupParticipantIds.set(selected);
+    this.groupError.set('');
+  }
+
+  async createGroup(): Promise<void> {
+    if (!this.canCreateGroup() || !this.canSubmitGroup()) return;
+    this.creatingGroup.set(true);
+    this.groupError.set('');
+    try {
+      const conversationId = await this.service.createGroupConversation(this.groupName(), [
+        ...this.selectedGroupParticipantIds(),
+      ]);
+      await this.loadConversations();
+      const item = this.conversations().find((entry) => entry.conversation.id === conversationId);
+      if (!item) throw new Error();
+      this.newGroupOpen.set(false);
+      await this.openConversation(item);
+    } catch {
+      this.groupError.set('Não foi possível criar o grupo. Tente novamente.');
+    } finally {
+      this.creatingGroup.set(false);
     }
   }
 
@@ -118,9 +200,7 @@ export class Chat implements OnDestroy {
     try {
       const conversationId = await this.service.getOrCreateDirectConversation(candidate.user_id);
       await this.loadConversations();
-      const item = this.conversations().find(
-        (entry) => entry.conversation.id === conversationId,
-      );
+      const item = this.conversations().find((entry) => entry.conversation.id === conversationId);
       if (!item) throw new Error();
       this.newConversationOpen.set(false);
       await this.openConversation(item);
@@ -137,6 +217,10 @@ export class Chat implements OnDestroy {
 
   candidateInitials(candidate: DirectChatCandidate): string {
     return this.initials(this.candidateName(candidate));
+  }
+
+  conversationKindLabel(item: ConversationListItem): string {
+    return item.conversation.kind === 'grupo' ? 'Conversa em grupo' : 'Conversa individual';
   }
 
   async openConversation(item: ConversationListItem): Promise<void> {

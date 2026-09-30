@@ -17,7 +17,8 @@ export class ChatService {
   async listMyConversations(): Promise<ChatConversation[]> {
     const userId = await this.authenticatedUser();
     try {
-      const { data, error } = await this.client.from('conversations')
+      const { data, error } = await this.client
+        .from('conversations')
         .select('id, kind, title, created_at, last_activity_at')
         .order('last_activity_at', { ascending: false })
         .order('id', { ascending: true })
@@ -67,10 +68,30 @@ export class ChatService {
     }
   }
 
+  async createGroupConversation(groupName: string, participantIds: string[]): Promise<string> {
+    const normalizedName = groupName.trim();
+    if (!normalizedName) throw new Error('Informe o nome do grupo.');
+    if (!participantIds.length) throw new Error('Selecione pelo menos uma pessoa.');
+
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc('create_group_conversation', {
+        group_name: normalizedName,
+        participant_ids: [...new Set(participantIds)],
+      });
+      if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId)
+        throw new Error();
+      return data;
+    } catch {
+      throw new Error('Não foi possível criar o grupo. Tente novamente.');
+    }
+  }
+
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
     const userId = await this.authenticatedUser();
     try {
-      const { data, error } = await this.client.from('messages')
+      const { data, error } = await this.client
+        .from('messages')
         .select('id, conversation_id, author_id, content, created_at')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
@@ -93,7 +114,8 @@ export class ChatService {
         p_conversation_id: conversationId,
         p_content: normalizedContent,
       });
-      if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId) throw new Error();
+      if (error || typeof data !== 'string' || this.auth.session()?.user.id !== userId)
+        throw new Error();
       return data;
     } catch {
       throw new Error('Não foi possível enviar a mensagem. Tente novamente.');
@@ -105,13 +127,18 @@ export class ChatService {
     onMessage: (message: ChatMessage) => void,
     onSubscribed: () => void,
   ): RealtimeChannel {
-    return this.client.channel(`messages:${conversationId}`)
-      .on<ChatMessage>('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conversationId}`,
-      }, (payload) => onMessage(payload.new))
+    return this.client
+      .channel(`messages:${conversationId}`)
+      .on<ChatMessage>(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => onMessage(payload.new),
+      )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') onSubscribed();
       });

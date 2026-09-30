@@ -16,7 +16,9 @@ describe('AuthService', () => {
     const query = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'test-user', display_name: 'Conta Local' }, error: null }),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValue({ data: { id: 'test-user', display_name: 'Conta Local' }, error: null }),
     };
     const unsubscribe = vi.fn();
     return {
@@ -38,10 +40,12 @@ describe('AuthService', () => {
   beforeEach(() => {
     navigateByUrl.mockClear();
     client = mockClient();
-    TestBed.configureTestingModule({ providers: [
-      { provide: SUPABASE_CLIENT, useValue: client },
-      { provide: Router, useValue: { navigateByUrl } },
-    ] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: SUPABASE_CLIENT, useValue: client },
+        { provide: Router, useValue: { navigateByUrl } },
+      ],
+    });
   });
 
   async function initialize() {
@@ -52,11 +56,14 @@ describe('AuthService', () => {
   it('signs in and reads only the authenticated user profile', async () => {
     await initialize();
     await auth.signIn(' local@example.invalid ', 'test-password');
-    expect(client.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'local@example.invalid', password: 'test-password' });
+    expect(client.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'local@example.invalid',
+      password: 'test-password',
+    });
     expect(auth.session()).toBe(session);
     await vi.waitFor(() => expect(auth.displayName()).toBe('Conta Local'));
     expect(client.from).toHaveBeenCalledExactlyOnceWith('profiles');
-    expect(client.query.select).toHaveBeenCalledWith('id, display_name');
+    expect(client.query.select).toHaveBeenCalledWith('id, display_name, role');
     expect(client.query.eq).toHaveBeenCalledWith('id', 'test-user');
   });
 
@@ -74,14 +81,24 @@ describe('AuthService', () => {
     expect(client.from).not.toHaveBeenCalled();
   });
 
-  it.each(['credentials', 'network', 'missing-session'])('handles %s login failure safely', async (failure) => {
-    await initialize();
-    if (failure === 'network') client.auth.signInWithPassword.mockRejectedValue(new Error('internal detail'));
-    else client.auth.signInWithPassword.mockResolvedValue({ data: { session: null }, error: failure === 'credentials' ? { message: 'internal detail' } : null });
-    await expect(auth.signIn('local@example.invalid', 'wrong')).rejects.toThrow('Não foi possível entrar.');
-    expect(auth.session()).toBeNull();
-    expect(client.from).not.toHaveBeenCalled();
-  });
+  it.each(['credentials', 'network', 'missing-session'])(
+    'handles %s login failure safely',
+    async (failure) => {
+      await initialize();
+      if (failure === 'network')
+        client.auth.signInWithPassword.mockRejectedValue(new Error('internal detail'));
+      else
+        client.auth.signInWithPassword.mockResolvedValue({
+          data: { session: null },
+          error: failure === 'credentials' ? { message: 'internal detail' } : null,
+        });
+      await expect(auth.signIn('local@example.invalid', 'wrong')).rejects.toThrow(
+        'Não foi possível entrar.',
+      );
+      expect(auth.session()).toBeNull();
+      expect(client.from).not.toHaveBeenCalled();
+    },
+  );
 
   it('clears the session and profile on logout and redirects to login', async () => {
     await initialize();
@@ -119,7 +136,12 @@ describe('AuthService', () => {
 
   it('discards a profile response that arrives after logout', async () => {
     let resolve!: (value: unknown) => void;
-    client.query.maybeSingle.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    client.query.maybeSingle.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
     await initialize();
     await auth.signIn('local@example.invalid', 'test-password');
     await vi.waitFor(() => expect(resolve).toBeDefined());
@@ -130,10 +152,15 @@ describe('AuthService', () => {
   });
 
   it('handles profile errors without exposing server details', async () => {
-    client.query.maybeSingle.mockResolvedValue({ data: null, error: { message: 'internal detail' } });
+    client.query.maybeSingle.mockResolvedValue({
+      data: null,
+      error: { message: 'internal detail' },
+    });
     await initialize();
     await auth.signIn('local@example.invalid', 'test-password');
-    await vi.waitFor(() => expect(auth.profileError()).toBe('Não foi possível carregar seu perfil.'));
+    await vi.waitFor(() =>
+      expect(auth.profileError()).toBe('Não foi possível carregar seu perfil.'),
+    );
     expect(auth.displayName()).toBe('Minha conta');
     expect(auth.session()).toBe(session);
   });

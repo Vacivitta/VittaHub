@@ -6,6 +6,7 @@ import { SUPABASE_CLIENT } from '../supabase/supabase-client';
 interface OwnProfile {
   id: string;
   display_name: string | null;
+  role: 'membro' | 'gestor' | 'administrador';
 }
 
 @Injectable({ providedIn: 'root' })
@@ -38,7 +39,10 @@ export class AuthService {
   async signIn(email: string, password: string): Promise<void> {
     await this.ready;
     try {
-      const { data, error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
+      const { data, error } = await this.client.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
       if (error || !data.session) throw new Error();
       this.setSession(data.session);
     } catch {
@@ -86,8 +90,11 @@ export class AuthService {
   private async loadOwnProfile(userId: string, revision: number): Promise<void> {
     if (revision !== this.revision) return;
     try {
-      const { data, error } = await this.client.from('profiles')
-        .select('id, display_name').eq('id', userId).maybeSingle<OwnProfile>();
+      const { data, error } = await this.client
+        .from('profiles')
+        .select('id, display_name, role')
+        .eq('id', userId)
+        .maybeSingle<OwnProfile>();
       if (error || !data || data.id !== userId) throw new Error();
       if (revision === this.revision) this.currentProfile.set(data);
     } catch {

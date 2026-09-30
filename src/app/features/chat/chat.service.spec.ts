@@ -25,24 +25,34 @@ describe('ChatService', () => {
     query.eq.mockReset().mockReturnValue(query);
     query.order.mockReset().mockReturnValue(query);
     returns.mockReset();
-    TestBed.configureTestingModule({ providers: [
-      { provide: AuthService, useValue: auth },
-      { provide: SUPABASE_CLIENT, useValue: client },
-    ] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: auth },
+        { provide: SUPABASE_CLIENT, useValue: client },
+      ],
+    });
   });
 
   it('lists only RLS-visible conversations by recent activity with stable order', async () => {
-    const conversations = [{
-      id: 'conversation-1', kind: 'individual', title: null,
-      created_at: '2026-09-28T10:00:00Z', last_activity_at: '2026-09-28T11:00:00Z',
-    }];
+    const conversations = [
+      {
+        id: 'conversation-1',
+        kind: 'individual',
+        title: null,
+        created_at: '2026-09-28T10:00:00Z',
+        last_activity_at: '2026-09-28T11:00:00Z',
+      },
+    ];
     returns.mockResolvedValue({ data: conversations, error: null });
 
     expect(await TestBed.inject(ChatService).listMyConversations()).toEqual(conversations);
     expect(client.from).toHaveBeenCalledExactlyOnceWith('conversations');
-    expect(query.select).toHaveBeenCalledExactlyOnceWith('id, kind, title, created_at, last_activity_at');
+    expect(query.select).toHaveBeenCalledExactlyOnceWith(
+      'id, kind, title, created_at, last_activity_at',
+    );
     expect(query.order.mock.calls).toEqual([
-      ['last_activity_at', { ascending: false }], ['id', { ascending: true }],
+      ['last_activity_at', { ascending: false }],
+      ['id', { ascending: true }],
     ]);
   });
 
@@ -50,8 +60,9 @@ describe('ChatService', () => {
     const participants = [{ user_id: 'user-1', display_name: 'Pessoa Um' }];
     client.rpc.mockResolvedValue({ data: participants, error: null });
 
-    expect(await TestBed.inject(ChatService).listConversationParticipants('conversation-1'))
-      .toEqual(participants);
+    expect(
+      await TestBed.inject(ChatService).listConversationParticipants('conversation-1'),
+    ).toEqual(participants);
     expect(client.rpc).toHaveBeenCalledExactlyOnceWith('list_conversation_participants', {
       p_conversation_id: 'conversation-1',
     });
@@ -71,36 +82,72 @@ describe('ChatService', () => {
     });
   });
 
+  it('creates a group with a trimmed name and deduplicated participant ids', async () => {
+    client.rpc.mockResolvedValue({ data: 'group-1', error: null });
+
+    await expect(
+      TestBed.inject(ChatService).createGroupConversation('  Operação da Unidade  ', [
+        'user-2',
+        'user-2',
+        'user-3',
+      ]),
+    ).resolves.toBe('group-1');
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith('create_group_conversation', {
+      group_name: 'Operação da Unidade',
+      participant_ids: ['user-2', 'user-3'],
+    });
+  });
+
+  it('validates group name and participants before calling Supabase', async () => {
+    const service = TestBed.inject(ChatService);
+    await expect(service.createGroupConversation('   ', ['user-2'])).rejects.toThrow(
+      'Informe o nome do grupo.',
+    );
+    await expect(service.createGroupConversation('Equipe', [])).rejects.toThrow(
+      'Selecione pelo menos uma pessoa.',
+    );
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
   it('loads message history in stable chronological order', async () => {
-    const messages = [{
-      id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-1',
-      content: 'Olá', created_at: '2026-09-28T10:00:00Z',
-    }];
+    const messages = [
+      {
+        id: 'message-1',
+        conversation_id: 'conversation-1',
+        author_id: 'user-1',
+        content: 'Olá',
+        created_at: '2026-09-28T10:00:00Z',
+      },
+    ];
     returns.mockResolvedValue({ data: messages, error: null });
 
     expect(await TestBed.inject(ChatService).listMessages('conversation-1')).toEqual(messages);
     expect(client.from).toHaveBeenCalledExactlyOnceWith('messages');
     expect(query.eq).toHaveBeenCalledExactlyOnceWith('conversation_id', 'conversation-1');
     expect(query.order.mock.calls).toEqual([
-      ['created_at', { ascending: true }], ['id', { ascending: true }],
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
     ]);
   });
 
   it('trims and sends a message without author or timestamp fields', async () => {
     client.rpc.mockResolvedValue({ data: 'message-new', error: null });
 
-    expect(await TestBed.inject(ChatService).sendMessage('conversation-1', '  Mensagem segura  '))
-      .toBe('message-new');
+    expect(
+      await TestBed.inject(ChatService).sendMessage('conversation-1', '  Mensagem segura  '),
+    ).toBe('message-new');
     expect(client.rpc).toHaveBeenCalledExactlyOnceWith('send_message', {
-      p_conversation_id: 'conversation-1', p_content: 'Mensagem segura',
+      p_conversation_id: 'conversation-1',
+      p_content: 'Mensagem segura',
     });
     expect(client.rpc.mock.calls[0][1]).not.toHaveProperty('author_id');
     expect(client.rpc.mock.calls[0][1]).not.toHaveProperty('created_at');
   });
 
   it('rejects an empty message without calling Supabase', async () => {
-    await expect(TestBed.inject(ChatService).sendMessage('conversation-1', '   '))
-      .rejects.toThrow('Digite uma mensagem antes de enviar.');
+    await expect(TestBed.inject(ChatService).sendMessage('conversation-1', '   ')).rejects.toThrow(
+      'Digite uma mensagem antes de enviar.',
+    );
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
@@ -111,13 +158,24 @@ describe('ChatService', () => {
 
     expect(service.subscribeToMessages('conversation-1', onMessage, onSubscribed)).toBe(channel);
     expect(client.channel).toHaveBeenCalledExactlyOnceWith('messages:conversation-1');
-    expect(channel.on).toHaveBeenCalledExactlyOnceWith('postgres_changes', {
-      event: 'INSERT', schema: 'public', table: 'messages',
-      filter: 'conversation_id=eq.conversation-1',
-    }, expect.any(Function));
+    expect(channel.on).toHaveBeenCalledExactlyOnceWith(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: 'conversation_id=eq.conversation-1',
+      },
+      expect.any(Function),
+    );
 
-    const message = { id: 'message-1', conversation_id: 'conversation-1', author_id: 'user-2',
-      content: 'Nova', created_at: '2026-09-28T12:00:00Z' };
+    const message = {
+      id: 'message-1',
+      conversation_id: 'conversation-1',
+      author_id: 'user-2',
+      content: 'Nova',
+      created_at: '2026-09-28T12:00:00Z',
+    };
     channel.on.mock.calls[0][2]({ new: message });
     channel.subscribe.mock.calls[0][0]('SUBSCRIBED');
     expect(onMessage).toHaveBeenCalledExactlyOnceWith(message);
@@ -134,7 +192,9 @@ describe('ChatService', () => {
     expect(await TestBed.inject(ChatService).listMyConversations()).toEqual([]);
 
     client.rpc.mockResolvedValue({ data: null, error: null });
-    expect(await TestBed.inject(ChatService).listConversationParticipants('conversation-1')).toEqual([]);
+    expect(
+      await TestBed.inject(ChatService).listConversationParticipants('conversation-1'),
+    ).toEqual([]);
   });
 
   it.each([
@@ -142,21 +202,30 @@ describe('ChatService', () => {
     ['participants', 'Não foi possível carregar os participantes da conversa.'],
     ['messages', 'Não foi possível carregar as mensagens. Tente novamente.'],
     ['send', 'Não foi possível enviar a mensagem. Tente novamente.'],
+    ['group', 'Não foi possível criar o grupo. Tente novamente.'],
   ] as const)('hides internal errors from %s', async (operation, expectedMessage) => {
     const service = TestBed.inject(ChatService);
     returns.mockResolvedValue({ data: null, error: { message: 'private database detail' } });
     client.rpc.mockResolvedValue({ data: null, error: { message: 'private database detail' } });
 
-    const action = operation === 'conversations' ? service.listMyConversations()
-      : operation === 'participants' ? service.listConversationParticipants('conversation-1')
-        : operation === 'messages' ? service.listMessages('conversation-1')
-          : service.sendMessage('conversation-1', 'Mensagem');
+    const action =
+      operation === 'conversations'
+        ? service.listMyConversations()
+        : operation === 'participants'
+          ? service.listConversationParticipants('conversation-1')
+          : operation === 'messages'
+            ? service.listMessages('conversation-1')
+            : operation === 'send'
+              ? service.sendMessage('conversation-1', 'Mensagem')
+              : service.createGroupConversation('Equipe', ['user-2']);
     await expect(action).rejects.toThrow(expectedMessage);
   });
 
   it('does not query without a current session', async () => {
     session.set(null);
-    await expect(TestBed.inject(ChatService).listMyConversations()).rejects.toThrow('Sessão inválida.');
+    await expect(TestBed.inject(ChatService).listMyConversations()).rejects.toThrow(
+      'Sessão inválida.',
+    );
     expect(client.from).not.toHaveBeenCalled();
   });
 
@@ -165,7 +234,8 @@ describe('ChatService', () => {
       session.set({ user: { id: 'user-2' } });
       return { data: [], error: null };
     });
-    await expect(TestBed.inject(ChatService).listMyConversations())
-      .rejects.toThrow('Não foi possível carregar suas conversas.');
+    await expect(TestBed.inject(ChatService).listMyConversations()).rejects.toThrow(
+      'Não foi possível carregar suas conversas.',
+    );
   });
 });
