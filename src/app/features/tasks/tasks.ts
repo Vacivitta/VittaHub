@@ -1,6 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { minuteClock } from '../../shared/minute-clock';
+import { ATTENTION_FILTERS, matchesAttention } from './task-attention';
 import { PageHeading } from '../../shared/page-heading';
 import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
 import { TaskWithContext } from './task-detail';
@@ -14,6 +17,23 @@ import { Icon } from '../../shared/icon';
       title="Minhas Pendências"
       description="Acompanhe as pendências atribuídas a você, organizadas por prazo."
     />
+    <nav class="attention-filters" aria-label="Filtrar pendências">
+      <a
+        class="button secondary"
+        routerLink="/minhas-pendencias"
+        [attr.aria-current]="!activeFilter() ? 'page' : null"
+        >Todas abertas</a
+      >
+      @for (filter of filters; track filter.id) {
+        <a
+          class="button secondary"
+          routerLink="/minhas-pendencias"
+          [queryParams]="{ filtro: filter.id }"
+          [attr.aria-current]="activeFilter() === filter.id ? 'page' : null"
+          >{{ filter.label }}</a
+        >
+      }
+    </nav>
     @if (loading()) {
       <div class="panel empty" role="status">Carregando suas pendências…</div>
     } @else if (error()) {
@@ -22,10 +42,10 @@ import { Icon } from '../../shared/icon';
         <p role="alert">{{ error() }}</p>
         <button type="button" (click)="load()">Tentar novamente</button>
       </section>
-    } @else if (tasks().length) {
-      <p class="small muted" aria-live="polite">{{ tasks().length }} pendências abertas</p>
+    } @else if (filteredTasks().length) {
+      <p class="small muted" aria-live="polite">{{ filteredTasks().length }} pendências abertas</p>
       <div class="tasks-grid">
-        @for (task of tasks(); track task.id) {
+        @for (task of filteredTasks(); track task.id) {
           <a
             class="task-card-link"
             [routerLink]="['/pendencias', task.id]"
@@ -54,9 +74,7 @@ import { Icon } from '../../shared/icon';
                 }
               </p>
               <div class="task-footer">
-                <span>{{
-                  task.business_state === 'aguardando_aceite' ? 'Prazo após aceite' : 'Prazo'
-                }}</span>
+                <span>Prazo</span>
                 <span [class.overdue]="isOverdue(task)"
                   ><app-icon name="calendar" /> {{ isOverdue(task) ? 'Vencido · ' : ''
                   }}{{ task.due_at | date: 'dd/MM/yyyy HH:mm' }}
@@ -68,9 +86,30 @@ import { Icon } from '../../shared/icon';
       </div>
     } @else {
       <section class="panel empty" role="status">
-        <h2>Nenhuma pendência aberta</h2>
-        <p>Você não possui pendências abertas atribuídas no momento.</p>
+        <h2>
+          {{ activeFilter() ? 'Nenhuma pendência neste filtro' : 'Nenhuma pendência aberta' }}
+        </h2>
+        <p>
+          {{
+            activeFilter()
+              ? 'Escolha outro filtro ou veja todas as pendências abertas.'
+              : 'Você não possui pendências abertas atribuídas no momento.'
+          }}
+        </p>
       </section>
+    }
+  `,
+  styles: `
+    .attention-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .attention-filters [aria-current='page'] {
+      background: var(--brand-primary-soft);
+      border-color: var(--brand-primary);
+      box-shadow: inset 0 -2px var(--brand-primary);
     }
   `,
 })
@@ -80,6 +119,16 @@ export class Tasks {
   readonly loading = signal(true);
   readonly error = signal('');
   readonly labels = BUSINESS_STATE_LABELS;
+  readonly filters = ATTENTION_FILTERS;
+  readonly now = minuteClock();
+  private readonly params = toSignal(inject(ActivatedRoute).queryParamMap);
+  readonly activeFilter = computed(() => {
+    const value = this.params()?.get('filtro');
+    return this.filters.find((filter) => filter.id === value)?.id ?? null;
+  });
+  readonly filteredTasks = computed(() =>
+    this.tasks().filter((task) => matchesAttention(task, this.activeFilter(), this.now())),
+  );
 
   constructor() {
     void this.load();
@@ -98,10 +147,6 @@ export class Tasks {
   }
 
   isOverdue(task: TaskWithContext): boolean {
-    return (
-      task.business_state !== 'aguardando_aceite' &&
-      task.business_state !== 'concluido' &&
-      new Date(task.due_at).getTime() < Date.now()
-    );
+    return matchesAttention(task, 'vencidas', this.now());
   }
 }

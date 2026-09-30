@@ -1,15 +1,4 @@
-<app-page-heading title="Chat" description="Conversas individuais e em grupo da equipe.">
-  <div class="chat-actions">
-    <button class="button primary" type="button" (click)="openNewConversation()">
-      <app-icon name="plus" /> Nova conversa
-    </button>
-    @if (canCreateGroup()) {
-      <button class="button secondary" type="button" (click)="openNewGroup()">
-        <app-icon name="plus" /> Novo grupo
-      </button>
-    }
-  </div>
-</app-page-heading>
+<h1 class="sr-only">Chat</h1>
 @if (newConversationOpen()) {
   <button
     class="chat-dialog-backdrop"
@@ -182,7 +171,7 @@
     </footer>
   </section>
 }
-<div class="chat-layout panel">
+<div class="chat-layout">
   <aside class="conversation-list" aria-label="Conversas">
     <div class="list-heading">
       <div>
@@ -190,6 +179,16 @@
         <h2>Conversas</h2>
       </div>
       <app-icon name="chat" />
+    </div>
+    <div class="chat-actions">
+      <button class="button tertiary" type="button" (click)="openNewConversation()">
+        <app-icon name="plus" /> Nova conversa
+      </button>
+      @if (canCreateGroup()) {
+        <button class="button tertiary" type="button" (click)="openNewGroup()">
+          <app-icon name="users" /> Novo grupo
+        </button>
+      }
     </div>
     @if (listLoading()) {
       <p class="note" role="status">Carregando conversas…</p>
@@ -225,6 +224,8 @@
               <small class="conversation-meta">
                 @if (item.conversation.kind === 'grupo') {
                   <span>{{ item.participantCount }} participantes</span>
+                } @else {
+                  <span>Conversa individual</span>
                 }
                 <span>{{ item.conversation.last_activity_at | date: 'dd/MM HH:mm' }}</span>
               </small>
@@ -240,8 +241,9 @@
   <section class="message-panel" aria-label="Conversa selecionada">
     @if (!selected()) {
       <div class="conversation-feedback" role="status">
+        <app-icon name="chat" />
         <h2>Selecione uma conversa</h2>
-        <p>Escolha uma conversa existente para consultar o histórico.</p>
+        <p>Escolha uma conversa existente ou inicie uma nova.</p>
       </div>
     } @else if (conversationLoading()) {
       <div class="conversation-feedback" role="status">Carregando histórico…</div>
@@ -268,11 +270,14 @@
       <div class="messages" aria-live="polite" aria-label="Histórico de mensagens">
         @for (message of messages(); track message.id) {
           <article class="message" [class.own]="isOwn(message)">
-            <span class="message-author">{{ authorName(message) }}</span>
-            <p>{{ message.content }}</p>
-            <time [attr.datetime]="message.created_at">{{
-              message.created_at | date: 'HH:mm'
-            }}</time>
+            <span class="avatar" aria-hidden="true">{{ authorInitials(message) }}</span>
+            <div class="message-body">
+              <div class="message-meta">
+                <span class="message-author">{{ authorName(message) }}</span>
+                <time [attr.datetime]="message.created_at">{{ message.created_at | date: 'HH:mm' }}</time>
+              </div>
+              <p>{{ message.content }}</p>
+            </div>
           </article>
         } @empty {
           <p class="note empty-history" role="status">

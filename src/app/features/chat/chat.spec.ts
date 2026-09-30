@@ -365,6 +365,10 @@ describe('Chat', () => {
     expect(rendered[1].textContent).toContain('Mensagem própria');
     expect(rendered[0].classList.contains('own')).toBe(false);
     expect(rendered[0].textContent).toContain('Pessoa Teste 2');
+    expect(rendered[0].querySelector('.avatar')?.textContent?.trim()).toBe('PT');
+    expect(rendered[0].querySelector('.message-meta time')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.chat-layout')?.classList.contains('panel')).toBe(false);
+    expect(fixture.nativeElement.querySelector('.conversation-list .chat-actions')).not.toBeNull();
     expect(rendered[1].classList.contains('own')).toBe(true);
     expect(rendered[1].textContent).toContain('Você');
   });

@@ -129,7 +129,7 @@ describe('Vacivitta interface', () => {
   });
 
   it.each([
-    ['/inicio', 'Olá, Pessoa Teste'],
+    ['/inicio', 'Olá, Conta Local'],
     ['/quadros', 'Quadros'],
     ['/quadros/11111111-1111-4111-8111-111111111111', 'Quadro local'],
     ['/minhas-pendencias', 'Minhas Pendências'],
@@ -143,7 +143,7 @@ describe('Vacivitta interface', () => {
     await harness.fixture.whenStable();
     harness.detectChanges();
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(heading);
-    expect(harness.routeNativeElement?.querySelectorAll('nav a').length).toBe(5);
+    expect(harness.routeNativeElement?.querySelectorAll('nav[aria-label="Navegação principal"] a').length).toBe(5);
   });
 
   it('redirects the root to the home page', async () => {

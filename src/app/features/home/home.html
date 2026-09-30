@@ -1,70 +1,87 @@
 <app-page-heading
-  title="Olá, Pessoa Teste"
-  description="Um olhar sobre o seu dia e o que a equipe está construindo."
-  eyebrow="Bem-vindo ao VittaHub"
+  [title]="'Olá, ' + auth.displayName()"
+  description="Seus prazos e próximos passos, em um só lugar."
+  eyebrow="Seu dia no VittaHub"
 >
-  <span class="date-label">{{ date }}<small>Data de referência da demonstração</small></span>
-</app-page-heading>
-<section class="welcome-banner">
-  <div>
-    <span class="eyebrow">CUIDAR COMEÇA COM ORGANIZAR</span>
-    <h2>Seu trabalho, mais conectado.</h2>
-    <p>Acompanhe suas pendências e encontre a equipe em um só lugar.</p>
-    <a class="button light" routerLink="/minhas-pendencias"
-      >Ver minhas pendências <app-icon name="arrow-right"
-    /></a>
+  <div class="live-date">
+    <app-icon name="calendar" /><span
+      >{{ date() }}<strong>{{ time() }}</strong></span
+    >
   </div>
-  <div class="banner-art" aria-hidden="true"><img src="/brand/vacivitta-symbol.png" alt="" /></div>
-</section>
-<section class="stats-grid" aria-label="Resumo das minhas pendências">
-  @for (stat of stats; track stat.label) {
-    <article class="stat-card">
-      <span class="stat-dot" [class]="'stat-dot ' + stat.tone" aria-hidden="true"></span>
-      <p>{{ stat.label }}</p>
-      <strong>{{ stat.value }}</strong
-      ><small>{{ stat.detail }}</small>
-    </article>
+</app-page-heading>
+<section
+  class="attention-grid"
+  aria-label="Resumo das minhas pendências"
+  [attr.aria-busy]="loading()"
+>
+  @for (stat of stats(); track stat.id) {
+    <a
+      [class]="'attention-card ' + stat.tone"
+      [class.has-alert]="stat.id === 'vencidas' && stat.value > 0"
+      routerLink="/minhas-pendencias"
+      [queryParams]="{ filtro: stat.id }"
+    >
+      <span class="attention-label"
+        ><app-icon
+          [name]="
+            stat.id === 'vencidas'
+              ? 'alert'
+              : stat.id === 'proximas-vencimento'
+                ? 'calendar'
+                : stat.id === 'aguardando-aceite'
+                  ? 'tasks'
+                  : 'check'
+          "
+        />{{ stat.label }}</span
+      >
+      <strong>{{ loading() || error() ? '—' : stat.value }}</strong>
+      <span class="small">{{ stat.detail }}</span>
+      <span class="card-cta">Ver pendências <app-icon name="arrow-right" /></span>
+    </a>
   }
 </section>
-<div class="dashboard-grid">
-  <section>
-    <div class="section-heading">
-      <h2>Em foco</h2>
-      <a routerLink="/minhas-pendencias">Ver todas</a>
-    </div>
-    <div class="task-list">
-      @for (task of upcoming; track task.id) {
-        <app-task-card [task]="task" />
-      } @empty {
-        <div class="panel empty">
-          <h3>Tudo em dia</h3>
-          <p>Você não tem pendências em foco agora.</p>
+<section class="priorities" aria-labelledby="priorities-title">
+  <div class="section-heading">
+    <h2 id="priorities-title">Pendências prioritárias</h2>
+    <a routerLink="/minhas-pendencias">Ver todas</a>
+  </div>
+  @if (loading()) {
+    <p class="note" role="status">Carregando suas pendências…</p>
+  } @else if (error()) {
+    <p role="alert">{{ error() }}</p>
+    <button type="button" (click)="load()">Tentar novamente</button>
+  } @else {
+    @for (task of priorities(); track task.id) {
+      <article class="priority-item" [class.overdue-item]="overdue(task)">
+        <div class="priority-main">
+          <h3>{{ task.title }}</h3>
+          <p class="muted small">{{ task.board?.title || 'Quadro indisponível' }}</p>
+          <span class="badge" [attr.data-state]="task.business_state">{{
+            labels[task.business_state]
+          }}</span>
         </div>
-      }
-    </div>
-  </section>
-  <section>
-    <div class="section-heading">
-      <h2>Seus quadros</h2>
-      <a routerLink="/quadros">Explorar</a>
-    </div>
-    <div class="panel board-shortcuts">
-      @for (board of boards; track board.id) {
-        <a [routerLink]="['/quadros', board.id]">
-          <span class="board-icon"><app-icon name="boards" /></span>
-          <span
-            ><strong>{{ board.title }}</strong
-            ><small>{{ board.area }}</small></span
+        <div class="priority-deadline">
+          <strong
+            ><app-icon [name]="overdue(task) ? 'alert' : 'calendar'" />{{ deadline(task) }}</strong
           >
-          <app-icon name="arrow-right" />
-        </a>
-      }
-    </div>
-    <div class="chat-callout">
-      <span class="eyebrow">CONVERSAS QUE APROXIMAM</span>
-      <h3>Um espaço para alinhar ideias.</h3>
-      <p>Veja as conversas de exemplo da equipe.</p>
-      <a routerLink="/chat">Ir para o chat</a>
-    </div>
-  </section>
-</div>
+          <time [attr.datetime]="task.due_at">{{ absoluteDeadline(task) }}</time>
+        </div>
+        <div class="priority-actions">
+          <a class="button tertiary" [routerLink]="['/pendencias', task.id]"
+            >Ver pendência <app-icon name="arrow-right"
+          /></a>
+          <a class="button tertiary" [routerLink]="['/quadros', task.board_id]">Abrir no quadro</a>
+        </div>
+      </article>
+    } @empty {
+      <p class="note" role="status">
+        Nenhuma pendência prioritária no momento. Acompanhe as demais em Minhas Pendências.
+      </p>
+    }
+  }
+</section>
+<nav class="home-shortcuts" aria-label="Atalhos de trabalho">
+  <a routerLink="/minhas-pendencias"><app-icon name="tasks" /> Minhas Pendências</a>
+  <a routerLink="/quadros"><app-icon name="boards" /> Explorar quadros</a>
+  <a routerLink="/chat"><app-icon name="chat" /> Conversar com a equipe</a>
+</nav>

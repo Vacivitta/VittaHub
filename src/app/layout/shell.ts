@@ -4,6 +4,7 @@ import { AuthService } from '../core/auth/auth.service';
 import { Icon, IconName } from '../shared/icon';
 
 @Component({
+  host: { '[class.sidebar-collapsed]': 'sidebarCollapsed()' },
   imports: [RouterLink, RouterLinkActive, RouterOutlet, Icon],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
@@ -13,6 +14,24 @@ export class Shell {
   readonly signingOut = signal(false);
   readonly logoutError = signal('');
   readonly menuOpen = signal(false);
+  readonly sidebarCollapsed = signal(this.readSidebarPreference());
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed.update((collapsed) => !collapsed);
+    try {
+      localStorage.setItem('vittahub.sidebarCollapsed', String(this.sidebarCollapsed()));
+    } catch {
+      // The preference remains usable for this session when storage is unavailable.
+    }
+  }
+
+  private readSidebarPreference(): boolean {
+    try {
+      return localStorage.getItem('vittahub.sidebarCollapsed') === 'true';
+    } catch {
+      return false;
+    }
+  }
   readonly links = [
     { path: '/inicio', label: 'Início', icon: 'home' },
     { path: '/quadros', label: 'Quadros', icon: 'boards' },

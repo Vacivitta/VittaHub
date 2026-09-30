@@ -7,8 +7,13 @@
     aria-label="VittaHub, início"
   >
     <img src="/brand/vacivitta-logo-horizontal.png" alt="Vacivitta Saúde Integrada" />
-    <span>VittaHub</span>
+    <img class="compact-brand" src="/brand/vacivitta-symbol.png" alt="" />
   </a>
+  <button class="sidebar-toggle" type="button" (click)="toggleSidebar()"
+    [attr.aria-label]="sidebarCollapsed() ? 'Expandir barra lateral' : 'Recolher barra lateral'"
+    [attr.aria-expanded]="!sidebarCollapsed()" aria-controls="navigation">
+    <app-icon [name]="sidebarCollapsed() ? 'panel-open' : 'panel-close'" />
+  </button>
   <button
     class="menu-toggle"
     type="button"
@@ -27,9 +32,11 @@
           [routerLink]="link.path"
           routerLinkActive="active"
           ariaCurrentWhenActive="page"
+          [attr.aria-label]="link.label"
           (click)="menuOpen.set(false)"
         >
-          <span class="nav-icon"><app-icon [name]="link.icon" /></span>{{ link.label }}
+          <span class="nav-icon"><app-icon [name]="link.icon" /></span><span class="nav-text">{{ link.label }}</span>
+          <span class="nav-tooltip" aria-hidden="true">{{ link.label }}</span>
         </a>
       }
     </nav>
@@ -37,8 +44,9 @@
       <app-icon name="sparkle" /><strong>Juntos, no mesmo ritmo.</strong>
       <p>Mais clareza para organizar.<br />Mais tempo para cuidar.</p>
     </div>
-    <button class="exit-link" type="button" (click)="logout()" [disabled]="signingOut()">
-      <app-icon name="logout" />{{ signingOut() ? 'Saindo…' : 'Sair' }}
+    <button class="exit-link" type="button" (click)="logout()" [disabled]="signingOut()" [attr.aria-label]="signingOut() ? 'Saindo…' : 'Sair'">
+      <app-icon name="logout" /><span class="nav-text">{{ signingOut() ? 'Saindo…' : 'Sair' }}</span>
+      <span class="nav-tooltip" aria-hidden="true">Sair</span>
     </button>
     @if (logoutError()) {
       <p class="form-error" role="alert">{{ logoutError() }}</p>

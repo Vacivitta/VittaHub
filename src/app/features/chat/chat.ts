@@ -2,7 +2,6 @@ import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
-import { PageHeading } from '../../shared/page-heading';
 import {
   ChatConversation,
   ChatMessage,
@@ -20,7 +19,8 @@ interface ConversationListItem {
 }
 
 @Component({
-  imports: [PageHeading, DatePipe, Icon],
+  imports: [DatePipe, Icon],
+  host: { class: 'chat-page' },
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
@@ -311,6 +311,11 @@ export class Chat implements OnDestroy {
 
   isOwn(message: ChatMessage): boolean {
     return message.author_id === this.currentUserId();
+  }
+
+  authorInitials(message: ChatMessage): string {
+    const name = this.participants().find((person) => person.user_id === message.author_id)?.display_name;
+    return this.initials(name?.trim() || this.authorName(message));
   }
 
   private currentUserId(): string {

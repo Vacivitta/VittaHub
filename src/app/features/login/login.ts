@@ -11,7 +11,6 @@ import { Icon } from '../../shared/icon';
       <section class="login-story" aria-labelledby="brand-headline">
         <a class="login-brand" routerLink="/login" aria-label="VittaHub, página de acesso">
           <img src="/brand/vacivitta-logo-horizontal.png" alt="Vacivitta Saúde Integrada" />
-          <span>VittaHub</span>
         </a>
         <div class="story-copy">
           <h1 id="brand-headline">Organize sua equipe<br />com mais clareza.</h1>

@@ -1,8 +1,12 @@
+.chat-page { min-width: 0; }
+:host { display: block; }
 .chat-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 4px 8px 12px;
 }
+.chat-actions .button { padding-inline: 8px; font-size: 11px; box-shadow: none; }
 .chat-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -13,6 +17,7 @@
   backdrop-filter: blur(2px);
 }
 .new-chat-dialog {
+  animation: dialog-enter 180ms ease-out;
   position: fixed;
   z-index: 51;
   top: 50%;
@@ -99,13 +104,18 @@
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   overflow: hidden;
-  min-height: min(680px, calc(100dvh - 190px));
+  height: calc(100dvh - 72px);
+  min-height: 480px;
+  background: var(--canvas);
 }
 .conversation-list {
   border-right: 1px solid var(--border);
-  padding: 20px 13px;
+  padding: 18px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   min-width: 0;
-  background: #fbfcfb;
+  background: var(--surface-soft);
 }
 .list-heading {
   display: flex;
@@ -127,11 +137,14 @@
   padding: 14px 8px;
 }
 .conversation-buttons {
-  display: grid;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
   padding-top: 9px;
 }
 .conversation {
+  flex-shrink: 0;
   display: flex;
   gap: 11px;
   border: 1px solid transparent;
@@ -141,16 +154,17 @@
   text-align: left;
   padding: 11px 10px;
   align-items: center;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
 }
 .conversation:hover:not(:disabled) {
-  background: #f1f6f2;
-  border-color: #e2e9e4;
+  background: var(--surface-sidebar-hover);
+  border-color: transparent;
 }
 .conversation.selected {
   background: var(--brand-primary-soft);
-  border-color: #cfe2d5;
+  border-color: transparent;
+  box-shadow: inset 3px 0 var(--brand-primary);
   color: var(--brand-primary-strong);
 }
 .conversation > span:last-child {
@@ -207,10 +221,12 @@
   flex-direction: column;
 }
 .conversation-feedback {
+  animation: content-enter 180ms ease-out;
   margin: auto;
   padding: 40px 24px;
   text-align: center;
 }
+.conversation-feedback > app-icon { font-size: 32px; color: var(--brand-primary); margin-bottom: 16px; }
 .conversation-feedback p {
   color: var(--text-muted);
 }
@@ -218,9 +234,10 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 17px 22px;
+  padding: 14px 22px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
 .conversation-header h2,
 .conversation-header p {
@@ -230,14 +247,13 @@
   margin-top: 3px;
 }
 .messages {
-  padding: 22px;
+  padding: 16px 0;
   flex: 1;
-  background: #f6f8f6;
+  background: var(--canvas);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 360px;
-  max-height: calc(100dvh - 380px);
+  gap: 2px;
+  min-height: 0;
   overflow-y: auto;
 }
 .empty-history {
@@ -245,23 +261,18 @@
   text-align: center;
 }
 .message {
-  align-self: flex-start;
-  max-width: min(78%, 580px);
-  background: #fff;
-  border: 1px solid var(--border);
-  padding: 11px 14px;
-  border-radius: 4px var(--radius-md) var(--radius-md) var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  display: flex;
+  gap: 12px;
+  padding: 10px 22px;
+  transition: background 160ms ease;
 }
-.message.own {
-  align-self: flex-end;
-  background: #e4f2e8;
-  border-color: #cde1d3;
-  border-radius: var(--radius-md) 4px var(--radius-md) var(--radius-md);
-}
+.message:hover { background: var(--surface-sidebar); }
+.message.own .avatar { background: var(--surface-sidebar-active); }
+.message-body { min-width: 0; flex: 1; }
+.message-meta { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .message-author {
-  font-size: 10px;
-  color: var(--brand-primary);
+  font-size: 12px;
+  color: var(--text-primary);
   font-weight: 750;
 }
 .message p {
@@ -271,28 +282,41 @@
   overflow-wrap: anywhere;
 }
 .message time {
-  display: block;
-  text-align: right;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 .composer {
   padding: 15px 20px 13px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--canvas);
+  flex-shrink: 0;
 }
 .composer .row {
+  display: flex;
+  flex-direction: column;
   align-items: stretch;
   margin-top: 7px;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: border-color 160ms ease;
 }
+.composer .row:focus-within { border-color: var(--brand-primary); }
 .composer textarea {
   min-width: 0;
   flex: 1;
   margin-top: 0;
   max-height: 130px;
+  min-height: 64px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: vertical;
 }
 .composer button {
-  align-self: stretch;
+  align-self: flex-end;
   min-width: 104px;
 }
 .composer p {
@@ -300,13 +324,14 @@
 }
 @media (max-width: 1050px) {
   .chat-layout {
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-columns: 280px minmax(0, 1fr);
   }
 }
 @media (max-width: 850px) {
   .chat-layout {
     grid-template-columns: 1fr;
     min-height: 0;
+    height: auto;
   }
   .conversation-list {
     border-right: 0;
@@ -314,19 +339,23 @@
   }
   .conversation-buttons {
     display: flex;
+    flex-direction: row;
     overflow-x: auto;
     padding-bottom: 5px;
   }
   .conversation {
-    min-width: 210px;
+    flex: 0 0 250px;
   }
   .list-heading {
     padding-bottom: 12px;
   }
   .messages {
-    padding: 18px 14px;
+    padding: 12px 0;
+    min-height: 220px;
     max-height: 48dvh;
   }
+  .message-panel { min-height: 55dvh; }
+  .message { padding-inline: 15px; }
   .composer,
   .conversation-header {
     padding-inline: 15px;
@@ -341,9 +370,6 @@
   .dialog-actions .button {
     min-height: 44px;
   }
-  .message {
-    max-width: 88%;
-  }
   .composer .row {
     gap: 7px;
   }
@@ -354,4 +380,9 @@
   .composer button app-icon {
     display: none;
   }
+}
+@keyframes content-enter { from { opacity: 0; transform: translateY(4px); } }
+@keyframes dialog-enter { from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }

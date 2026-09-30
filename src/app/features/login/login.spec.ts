@@ -16,6 +16,8 @@ describe('Login', () => {
     const fixture = TestBed.createComponent(Login);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('input').readOnly).toBe(false);
+    expect(fixture.nativeElement.querySelector('.login-brand').textContent.trim()).toBe('');
+    expect(fixture.nativeElement.querySelector('.login-brand img')).not.toBeNull();
     await fixture.componentInstance.submit();
     fixture.detectChanges();
     expect(signIn).not.toHaveBeenCalled();
