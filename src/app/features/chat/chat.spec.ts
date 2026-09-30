@@ -28,6 +28,11 @@ describe('Chat', () => {
     last_activity_at: '2026-09-28T13:00:00Z',
   };
   const participants: Record<string, ConversationParticipant[]> = {
+    'group-1': [
+      { user_id: 'user-1', display_name: 'Pessoa Atual' },
+      { user_id: 'user-2', display_name: 'Pessoa Teste 2' },
+      { user_id: 'user-3', display_name: 'Pessoa Teste 3' },
+    ],
     'conversation-1': [
       { user_id: 'user-1', display_name: 'Pessoa Atual' },
       { user_id: 'user-2', display_name: 'Pessoa Teste 2' },
@@ -174,6 +179,27 @@ describe('Chat', () => {
     expect(fixture.nativeElement.querySelector('.conversation')).toBeNull();
   });
 
+  it('distinguishes groups with an icon, badge and count while retaining activity and individual initials', async () => {
+    listMyConversations.mockResolvedValue([first, group]);
+    const fixture = await render();
+    const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('.conversation');
+    expect(rows[0].querySelector('.avatar')?.textContent?.trim()).toBe('PT');
+    expect(rows[0].querySelector('.group-badge')).toBeNull();
+    expect(rows[0].querySelector('.group-avatar')).toBeNull();
+    expect(rows[1].querySelector('.group-avatar app-icon')).not.toBeNull();
+    expect(rows[1].querySelector('.group-badge')?.textContent).toBe('Grupo');
+    expect(rows[1].textContent).toContain('3 participantes');
+    expect(rows[1].querySelector('.conversation-meta')?.textContent).toContain('28/09');
+    await openFirst(fixture);
+    expect(fixture.nativeElement.querySelector('.conversation-header').textContent)
+      .toContain('Conversa individual');
+    await fixture.componentInstance.openConversation(fixture.componentInstance.conversations()[1]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.conversation-header .group-avatar app-icon')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.conversation-header').textContent)
+      .toContain('Grupo • 3 participantes');
+  });
+
   it('opens Nova conversa, loads candidates and filters names locally', async () => {
     const fixture = await render();
     const button = Array.from(
@@ -258,7 +284,7 @@ describe('Chat', () => {
     expect(page.newGroupOpen()).toBe(false);
     expect(page.selected()?.conversation.id).toBe('group-1');
     expect(page.selected()?.name).toBe('Operação da Unidade');
-    expect(fixture.nativeElement.textContent).toContain('Conversa em grupo');
+    expect(fixture.nativeElement.textContent).toContain('Grupo • 3 participantes');
     expect(fixture.nativeElement.textContent).toContain('A conversa começa por aqui');
     expect(subscriptions.at(-1)?.conversationId).toBe('group-1');
 

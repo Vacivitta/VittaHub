@@ -16,6 +16,7 @@ interface ConversationListItem {
   conversation: ChatConversation;
   name: string;
   initials: string;
+  participantCount: number;
 }
 
 @Component({
@@ -97,16 +98,16 @@ export class Chat implements OnDestroy {
       const conversations = await this.service.listMyConversations();
       const items = await Promise.all(
         conversations.map(async (conversation) => {
+          const participants = await this.service.listConversationParticipants(conversation.id);
           if (conversation.kind === 'grupo') {
             const name = conversation.title?.trim() || 'Grupo';
-            return { conversation, name, initials: this.initials(name) };
+            return { conversation, name, initials: this.initials(name), participantCount: participants.length };
           }
-          const participants = await this.service.listConversationParticipants(conversation.id);
           const other = participants.find(
             (participant) => participant.user_id !== this.currentUserId(),
           );
           const name = other?.display_name?.trim() || 'Conversa individual';
-          return { conversation, name, initials: this.initials(name) };
+          return { conversation, name, initials: this.initials(name), participantCount: participants.length };
         }),
       );
       if (!this.destroyed) this.conversations.set(items);
@@ -220,7 +221,9 @@ export class Chat implements OnDestroy {
   }
 
   conversationKindLabel(item: ConversationListItem): string {
-    return item.conversation.kind === 'grupo' ? 'Conversa em grupo' : 'Conversa individual';
+    return item.conversation.kind === 'grupo'
+      ? `Grupo • ${this.participants().length} participantes`
+      : 'Conversa individual';
   }
 
   async openConversation(item: ConversationListItem): Promise<void> {

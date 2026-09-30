@@ -208,10 +208,26 @@
             [attr.aria-pressed]="selected()?.conversation?.id === item.conversation.id"
             (click)="openConversation(item)"
           >
-            <span class="avatar">{{ item.initials }}</span>
+            <span class="avatar" [class.group-avatar]="item.conversation.kind === 'grupo'" aria-hidden="true">
+              @if (item.conversation.kind === 'grupo') {
+                <app-icon name="users" />
+              } @else {
+                {{ item.initials }}
+              }
+            </span>
             <span>
-              <strong>{{ item.name }}</strong>
-              <small>{{ item.conversation.last_activity_at | date: 'dd/MM HH:mm' }}</small>
+              <span class="conversation-title">
+                <strong [title]="item.name">{{ item.name }}</strong>
+                @if (item.conversation.kind === 'grupo') {
+                  <span class="group-badge">Grupo</span>
+                }
+              </span>
+              <small class="conversation-meta">
+                @if (item.conversation.kind === 'grupo') {
+                  <span>{{ item.participantCount }} participantes</span>
+                }
+                <span>{{ item.conversation.last_activity_at | date: 'dd/MM HH:mm' }}</span>
+              </small>
             </span>
           </button>
         } @empty {
@@ -237,7 +253,13 @@
       </div>
     } @else {
       <header class="conversation-header">
-        <span class="avatar">{{ selected()!.initials }}</span>
+        <span class="avatar" [class.group-avatar]="selected()!.conversation.kind === 'grupo'" aria-hidden="true">
+          @if (selected()!.conversation.kind === 'grupo') {
+            <app-icon name="users" />
+          } @else {
+            {{ selected()!.initials }}
+          }
+        </span>
         <div>
           <h2>{{ selected()!.name }}</h2>
           <p class="small muted">{{ conversationKindLabel(selected()!) }}</p>
