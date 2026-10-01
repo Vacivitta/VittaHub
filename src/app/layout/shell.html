@@ -27,7 +27,7 @@
   <div id="navigation" class="navigation" [class.open]="menuOpen()">
     <p class="nav-label">SEU ESPAÇO</p>
     <nav aria-label="Navegação principal">
-      @for (link of links; track link.path) {
+      @for (link of visibleLinks(); track link.path) {
         <a
           [routerLink]="link.path"
           routerLinkActive="active"

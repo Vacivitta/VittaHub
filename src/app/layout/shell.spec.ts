@@ -6,13 +6,24 @@ import { Shell } from './shell';
 
 describe('Shell sidebar', () => {
   const key = 'vittahub.sidebarCollapsed';
+  const canAccessAdministration = signal(true);
   beforeEach(() => {
+    canAccessAdministration.set(true);
     localStorage.removeItem(key);
     TestBed.configureTestingModule({
       imports: [Shell],
-      providers: [provideRouter([]), { provide: AuthService, useValue: {
-        displayName: signal('Pessoa Teste'), profileError: signal(''), signOut: vi.fn(),
-      } }],
+      providers: [
+        provideRouter([]),
+        {
+          provide: AuthService,
+          useValue: {
+            displayName: signal('Pessoa Teste'),
+            profileError: signal(''),
+            signOut: vi.fn(),
+            canAccessAdministration,
+          },
+        },
+      ],
     });
   });
   afterEach(() => {
@@ -35,9 +46,13 @@ describe('Shell sidebar', () => {
     const links = fixture.nativeElement.querySelectorAll('nav a') as NodeListOf<HTMLElement>;
     expect(links).toHaveLength(5);
     for (const link of links) {
-      expect(link.querySelector('.nav-tooltip')?.textContent?.trim()).toBe(link.getAttribute('aria-label'));
+      expect(link.querySelector('.nav-tooltip')?.textContent?.trim()).toBe(
+        link.getAttribute('aria-label'),
+      );
     }
-    expect(fixture.nativeElement.querySelector('.exit-link').getAttribute('aria-label')).toBe('Sair');
+    expect(fixture.nativeElement.querySelector('.exit-link').getAttribute('aria-label')).toBe(
+      'Sair',
+    );
     button.click();
     expect(localStorage.getItem(key)).toBe('false');
   });
@@ -53,9 +68,24 @@ describe('Shell sidebar', () => {
     expect(fixture.componentInstance.sidebarCollapsed()).toBe(true);
   });
 
+  it('hides administration when access is unavailable and reacts to permission changes', () => {
+    canAccessAdministration.set(false);
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/administracao"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('nav a')).toHaveLength(4);
+    canAccessAdministration.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/administracao"]')).not.toBeNull();
+  });
+
   it('defaults to expanded and remains usable when storage is unavailable', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Unavailable'); });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Unavailable'); });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('Unavailable');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Unavailable');
+    });
     const fixture = TestBed.createComponent(Shell);
     expect(fixture.componentInstance.sidebarCollapsed()).toBe(false);
     expect(() => fixture.componentInstance.toggleSidebar()).not.toThrow();

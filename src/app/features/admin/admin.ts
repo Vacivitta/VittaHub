@@ -1,73 +1,81 @@
-import { Component } from '@angular/core';
+﻿import { Component, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
+import { AuthService } from '../../core/auth/auth.service';
 import { PageHeading } from '../../shared/page-heading';
+import { Icon } from '../../shared/icon';
+import { BoardsService } from '../boards/boards.service';
+import { BoardSummary } from '../boards/board-summary';
+
 @Component({
-  imports: [PageHeading],
-  template: `
-    <app-page-heading
-      title="Administração"
-      description="Uma visão inicial da organização e dos perfis previstos."
-    />
-    <div class="admin-banner">
-      <strong>Prévia administrativa</strong>
-      <p>
-        Os perfis abaixo são ilustrativos. Esta tela não concede nem verifica permissões de acesso.
-      </p>
-    </div>
-    <section class="panel admin-panel">
-      <div class="section-heading">
-        <h2>Pessoas de demonstração</h2>
-        <span class="badge">3 exemplos</span>
-      </div>
-      <div class="table-scroll">
-        <table>
-          <caption class="sr-only">
-            Pessoas fictícias e exemplos de perfis
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Pessoa</th>
-              <th scope="col">E-mail fictício</th>
-              <th scope="col">Perfil ilustrativo</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (person of people; track person.email) {
-              <tr>
-                <td>
-                  <strong>{{ person.name }}</strong>
-                </td>
-                <td>{{ person.email }}</td>
-                <td>
-                  <span class="badge">{{ person.role }}</span>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    </section>
-    <div class="admin-grid">
-      <section class="panel admin-panel">
-        <span class="eyebrow">QUADROS</span>
-        <h2>Organização dos acessos</h2>
-        <p class="muted">Administradores poderão autorizar quem cria e administra quadros.</p>
-        <span class="badge">Configuração futura</span>
-      </section>
-      <section class="panel admin-panel">
-        <span class="eyebrow">CONVERSAS</span>
-        <h2>Grupos da equipe</h2>
-        <p class="muted">
-          Gestores e administradores poderão criar grupos e administrar participantes.
-        </p>
-        <span class="badge">Configuração futura</span>
-      </section>
-    </div>
-  `,
+  imports: [PageHeading, Icon, RouterLink],
+  templateUrl: './admin.html',
+  styleUrl: './admin.scss',
 })
-export class Admin {
-  readonly people = [
-    { name: 'Pessoa Demo', email: 'pessoa.demo@example.invalid', role: 'Membro' },
-    { name: 'Colega Alfa', email: 'alfa@example.invalid', role: 'Gestor' },
-    { name: 'Colega Beta', email: 'beta@example.invalid', role: 'Administrador' },
-  ];
+export class Admin implements OnInit {
+  readonly auth = inject(AuthService);
+  private readonly service = inject(BoardsService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly router = inject(Router);
+  readonly boards = signal<BoardSummary[]>([]);
+  readonly department = signal('');
+  readonly loading = signal(true);
+  readonly error = signal('');
+  private revision = 0;
+
+  constructor() {
+    effect(() => {
+      if (!this.auth.canAccessAdministration()) {
+        this.revision++;
+        this.boards.set([]);
+        this.department.set('');
+        void this.router.navigateByUrl('/inicio');
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    void this.load();
+  }
+
+  async load(): Promise<void> {
+    if (!this.auth.canAccessAdministration()) return;
+    const revision = ++this.revision;
+    const userId = this.auth.session()?.user.id;
+    const current = () =>
+      !this.destroyRef.destroyed &&
+      revision === this.revision &&
+      this.auth.session()?.user.id === userId &&
+      this.auth.canAccessAdministration();
+    this.loading.set(true);
+    this.error.set('');
+    this.boards.set([]);
+    this.department.set('');
+    const department = this.loadDepartment().then((name) => {
+      if (current()) this.department.set(name);
+    });
+    try {
+      const visible = await this.service.list();
+      const allowed = await Promise.all(
+        visible.map((board) => this.service.canManageStructure(board.id)),
+      );
+      if (current()) this.boards.set(visible.filter((_, index) => allowed[index] === true));
+    } catch {
+      if (current())
+        this.error.set('Não foi possível carregar os quadros administrados. Tente novamente.');
+    } finally {
+      await department;
+      if (current()) this.loading.set(false);
+    }
+  }
+
+  private async loadDepartment(): Promise<string> {
+    try {
+      const context = await this.service.getCreationContext();
+      if (!context?.department_id) return '';
+      const departments = await this.service.listDepartments();
+      return departments.find((department) => department.id === context.department_id)?.name ?? '';
+    } catch {
+      return '';
+    }
+  }
 }

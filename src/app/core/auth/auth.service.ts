@@ -7,6 +7,7 @@ interface OwnProfile {
   id: string;
   display_name: string | null;
   role: 'membro' | 'gestor' | 'administrador';
+  is_active: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +20,15 @@ export class AuthService {
   readonly session = this.currentSession.asReadonly();
   readonly profile = this.currentProfile.asReadonly();
   readonly profileError = signal('');
+  readonly canAccessAdministration = computed(() => {
+    const profile = this.profile();
+    return (
+      !!this.session() &&
+      profile?.id === this.session()?.user.id &&
+      profile?.is_active === true &&
+      (profile.role === 'gestor' || profile.role === 'administrador')
+    );
+  });
   readonly displayName = computed(() => this.profile()?.display_name?.trim() || 'Minha conta');
   readonly ready: Promise<void>;
 
@@ -92,7 +102,7 @@ export class AuthService {
     try {
       const { data, error } = await this.client
         .from('profiles')
-        .select('id, display_name, role')
+        .select('id, display_name, role, is_active')
         .eq('id', userId)
         .maybeSingle<OwnProfile>();
       if (error || !data || data.id !== userId) throw new Error();

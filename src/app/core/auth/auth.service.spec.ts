@@ -18,7 +18,15 @@ describe('AuthService', () => {
       eq: vi.fn().mockReturnThis(),
       maybeSingle: vi
         .fn()
-        .mockResolvedValue({ data: { id: 'test-user', display_name: 'Conta Local' }, error: null }),
+        .mockResolvedValue({
+          data: {
+            id: 'test-user',
+            display_name: 'Conta Local',
+            role: 'membro',
+            is_active: true as boolean | undefined,
+          },
+          error: null,
+        }),
     };
     const unsubscribe = vi.fn();
     return {
@@ -63,7 +71,7 @@ describe('AuthService', () => {
     expect(auth.session()).toBe(session);
     await vi.waitFor(() => expect(auth.displayName()).toBe('Conta Local'));
     expect(client.from).toHaveBeenCalledExactlyOnceWith('profiles');
-    expect(client.query.select).toHaveBeenCalledWith('id, display_name, role');
+    expect(client.query.select).toHaveBeenCalledWith('id, display_name, role, is_active');
     expect(client.query.eq).toHaveBeenCalledWith('id', 'test-user');
   });
 
@@ -72,6 +80,27 @@ describe('AuthService', () => {
     await initialize();
     expect(auth.session()).toBe(session);
     await vi.waitFor(() => expect(auth.displayName()).toBe('Conta Local'));
+  });
+
+  it.each([
+    ['gestor', true, true],
+    ['administrador', true, true],
+    ['membro', true, false],
+    ['gestor', false, false],
+    ['administrador', false, false],
+    ['gestor', undefined, false],
+  ])('checks administration access for %s with active=%s', async (role, active, allowed) => {
+    client.query.maybeSingle.mockResolvedValue({
+      data: { id: 'test-user', display_name: 'Conta Local', role, is_active: active },
+      error: null,
+    });
+    await initialize();
+    expect(auth.canAccessAdministration()).toBe(false);
+    await auth.signIn('local@example.invalid', 'test-password');
+    await vi.waitFor(() => expect(auth.profile()).not.toBeNull());
+    expect(auth.canAccessAdministration()).toBe(allowed);
+    await auth.signOut();
+    expect(auth.canAccessAdministration()).toBe(false);
   });
 
   it('fails closed when session restoration fails', async () => {

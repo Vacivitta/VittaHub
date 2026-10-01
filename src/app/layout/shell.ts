@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { Icon, IconName } from '../shared/icon';
@@ -39,6 +39,11 @@ export class Shell {
     { path: '/chat', label: 'Chat', icon: 'chat' },
     { path: '/administracao', label: 'Administração', icon: 'settings' },
   ] satisfies { path: string; label: string; icon: IconName }[];
+  readonly visibleLinks = computed(() =>
+    this.links.filter(
+      (link) => link.path !== '/administracao' || this.auth.canAccessAdministration(),
+    ),
+  );
 
   async logout(): Promise<void> {
     if (this.signingOut()) return;

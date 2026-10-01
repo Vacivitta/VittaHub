@@ -3,7 +3,7 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
 import { routes } from './app.routes';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
 import { BoardsService } from './features/boards/boards.service';
 import { ChatService } from './features/chat/chat.service';
@@ -15,13 +15,31 @@ describe('Vacivitta interface', () => {
     session,
     ready: Promise.resolve(),
     displayName: signal('Conta Local'),
-    profile: signal({ id: 'test-user', display_name: 'Conta Local' }),
+    profile: signal<ReturnType<AuthService['profile']>>({
+      id: 'test-user',
+      display_name: 'Conta Local',
+      role: 'membro',
+      is_active: true,
+    }),
+    canAccessAdministration: computed(
+      (): boolean =>
+        !!session() &&
+        auth.profile()?.is_active === true &&
+        (auth.profile()?.role === 'gestor' || auth.profile()?.role === 'administrador'),
+    ),
     profileError: signal(''),
     signOut: vi.fn(),
   };
   beforeEach(() => {
     session.set({ user: { id: 'test-user' } });
     auth.ready = Promise.resolve();
+    auth.profile.set({
+      id: 'test-user',
+      display_name: 'Conta Local',
+      role: 'membro',
+      is_active: true,
+    });
+    auth.profileError.set('');
     auth.signOut.mockReset().mockResolvedValue(undefined);
     TestBed.configureTestingModule({
       imports: [App],
@@ -31,36 +49,32 @@ describe('Vacivitta interface', () => {
         {
           provide: BoardsService,
           useValue: {
-            list: vi
-              .fn()
-              .mockResolvedValue([
-                {
-                  id: '11111111-1111-4111-8111-111111111111',
-                  title: 'Quadro local',
-                  description: null,
-                  department: { name: 'Equipe local' },
-                },
-              ]),
+            list: vi.fn().mockResolvedValue([
+              {
+                id: '11111111-1111-4111-8111-111111111111',
+                title: 'Quadro local',
+                description: null,
+                department: { name: 'Equipe local' },
+              },
+            ]),
             getCreationContext: vi.fn().mockResolvedValue(null),
             canManageStructure: vi.fn().mockResolvedValue(false),
             createColumn: vi.fn(),
             renameColumn: vi.fn(),
-            getById: vi
-              .fn()
-              .mockImplementation(async (id: string) =>
-                id === '11111111-1111-4111-8111-111111111111'
-                  ? {
-                      status: 'loaded',
-                      board: {
-                        id,
-                        title: 'Quadro local',
-                        description: null,
-                        department: null,
-                        columns: [],
-                      },
-                    }
-                  : { status: 'unavailable' },
-              ),
+            getById: vi.fn().mockImplementation(async (id: string) =>
+              id === '11111111-1111-4111-8111-111111111111'
+                ? {
+                    status: 'loaded',
+                    board: {
+                      id,
+                      title: 'Quadro local',
+                      description: null,
+                      department: null,
+                      columns: [],
+                    },
+                  }
+                : { status: 'unavailable' },
+            ),
           },
         },
         {
@@ -139,11 +153,22 @@ describe('Vacivitta interface', () => {
     ['/endereco-inexistente', 'Página não encontrada'],
     ['/quadros/inexistente', 'Quadro não encontrado'],
   ])('renders %s', async (url, heading) => {
+    if (url === '/administracao') {
+      auth.profile.set({
+        id: 'test-user',
+        display_name: 'Conta Local',
+        role: 'gestor',
+        is_active: true,
+      });
+    }
     const harness = await RouterTestingHarness.create(url);
     await harness.fixture.whenStable();
     harness.detectChanges();
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(heading);
-    expect(harness.routeNativeElement?.querySelectorAll('nav[aria-label="Navegação principal"] a').length).toBe(5);
+    expect(
+      harness.routeNativeElement?.querySelectorAll('nav[aria-label="Navegação principal"] a')
+        .length,
+    ).toBe(url === '/administracao' ? 5 : 4);
   });
 
   it('redirects the root to the home page', async () => {
@@ -197,6 +222,43 @@ describe('Vacivitta interface', () => {
     session.set(null);
     await harness.navigateByUrl('/quadros');
     expect(TestBed.inject(Router).url).toBe('/login');
+  });
+
+  it.each([
+    ['gestor', true, '/administracao'],
+    ['administrador', true, '/administracao'],
+    ['membro', true, '/inicio'],
+    ['gestor', false, '/inicio'],
+    ['administrador', false, '/inicio'],
+  ] as const)(
+    'protects direct administration access for %s active=%s',
+    async (role, is_active, expected) => {
+      auth.profile.set({ id: 'test-user', display_name: 'Conta Local', role, is_active });
+      await RouterTestingHarness.create('/administracao');
+      expect(TestBed.inject(Router).url).toBe(expected);
+    },
+  );
+
+  it('waits for the own profile before admitting an active manager', async () => {
+    auth.profile.set(null);
+    const pending = RouterTestingHarness.create('/administracao');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(TestBed.inject(Router).url).not.toBe('/administracao');
+    auth.profile.set({
+      id: 'test-user',
+      display_name: 'Conta Local',
+      role: 'gestor',
+      is_active: true,
+    });
+    await pending;
+    expect(TestBed.inject(Router).url).toBe('/administracao');
+  });
+
+  it('denies administration when the own profile cannot be loaded', async () => {
+    auth.profile.set(null);
+    auth.profileError.set('Não foi possível carregar seu perfil.');
+    await RouterTestingHarness.create('/administracao');
+    expect(TestBed.inject(Router).url).toBe('/inicio');
   });
 
   it('shows the real profile name and invokes logout from the layout', async () => {

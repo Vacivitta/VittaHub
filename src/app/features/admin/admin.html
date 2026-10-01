@@ -1,0 +1,70 @@
+@if (auth.canAccessAdministration()) {
+  <app-page-heading
+    title="Administração"
+    description="Seu perfil e os quadros que você administra."
+  />
+  <section class="profile-panel" aria-labelledby="profile-title">
+    <span class="profile-icon"><app-icon name="settings" /></span>
+    <div>
+      <p class="eyebrow">SEU PERFIL</p>
+      <h2 id="profile-title">{{ auth.displayName() }}</h2>
+      <dl class="profile-details">
+        <div>
+          <dt>Papel</dt>
+          <dd>{{ auth.profile()?.role === 'administrador' ? 'Administrador' : 'Gestor' }}</dd>
+        </div>
+        <div>
+          <dt>Departamento</dt>
+          <dd>{{ loading() ? 'Carregando…' : department() || 'Departamento indisponível' }}</dd>
+        </div>
+        <div>
+          <dt>Situação</dt>
+          <dd>Ativo</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+  <section aria-labelledby="managed-title" [attr.aria-busy]="loading()">
+    <div class="managed-heading">
+      <h2 id="managed-title">Quadros administrados</h2>
+      @if (!loading() && !error()) {
+        <span class="badge" aria-live="polite" aria-atomic="true"
+          >{{ boards().length }} {{ boards().length === 1 ? 'quadro' : 'quadros' }}</span
+        >
+      }
+    </div>
+    @if (loading()) {
+      <div class="admin-state" role="status">Carregando seus quadros administrados…</div>
+    } @else if (error()) {
+      <div class="admin-state">
+        <p role="alert">{{ error() }}</p>
+        <button class="button secondary" type="button" (click)="load()">Tentar novamente</button>
+      </div>
+    } @else {
+      <div class="managed-grid">
+        @for (board of boards(); track board.id) {
+          <a
+            class="managed-board"
+            [routerLink]="['/quadros', board.id]"
+            [attr.aria-labelledby]="'managed-' + board.id"
+          >
+            <div class="board-meta">
+              <app-icon name="boards" /><span>{{
+                board.department?.name || 'Departamento indisponível'
+              }}</span>
+            </div>
+            <h3 [id]="'managed-' + board.id">{{ board.title }}</h3>
+            <p>{{ board.description || 'Sem descrição.' }}</p>
+            <span class="board-open">Abrir quadro <app-icon name="arrow-right" /></span>
+          </a>
+        } @empty {
+          <div class="admin-state" role="status">
+            <h3>Nenhum quadro com administração confirmada</h3>
+            <p>Não há quadros para exibir nesta lista.</p>
+            <a class="button secondary" routerLink="/quadros">Ver meus quadros</a>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}
