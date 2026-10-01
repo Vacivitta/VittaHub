@@ -1,4 +1,5 @@
 import { DatePipe } from '@angular/common';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,171 +9,15 @@ import { BoardCreationContext, BoardSummary, DepartmentOption } from './board-su
 import { BoardsService } from './boards.service';
 
 @Component({
-  imports: [PageHeading, RouterLink, Icon, ReactiveFormsModule, DatePipe],
-  template: `
-    <app-page-heading
-      title="Quadros"
-      description="Encontre os espaços de trabalho dos quais você participa."
-    >
-      @if (canCreate()) {
-        <button class="button primary" type="button" (click)="openCreateForm()">
-          <app-icon name="plus" /> Novo quadro
-        </button>
-      }
-    </app-page-heading>
-    @if (success()) {
-      <p class="feedback success" role="status">{{ success() }}</p>
-    }
-    <div class="toolbar">
-      <label class="search-field"
-        >Buscar quadro
-        <app-icon name="search" />
-        <input
-          type="search"
-          placeholder="Digite o nome de um quadro"
-          [disabled]="loading() || !!error()"
-          [value]="query()"
-          (input)="query.set($any($event.target).value)"
-        />
-      </label>
-      @if (!loading() && !error()) {
-        <span class="muted small" aria-live="polite"
-          >{{ filtered().length }} quadros disponíveis</span
-        >
-      }
-    </div>
-    @if (loading()) {
-      <div class="panel empty" role="status">Carregando quadros…</div>
-    } @else if (error()) {
-      <div class="panel empty">
-        <h2>Não foi possível carregar os quadros</h2>
-        <p role="alert">{{ error() }}</p>
-        <button class="button secondary" type="button" (click)="load()">Tentar novamente</button>
-      </div>
-    } @else {
-      <div class="boards-grid">
-        @for (board of filtered(); track board.id) {
-          <a class="board-tile panel" [routerLink]="['/quadros', board.id]">
-            <div class="board-cover">
-              <app-icon name="boards" /><span class="badge">{{
-                board.department?.name || 'Departamento indisponível'
-              }}</span>
-            </div>
-            <div class="board-body">
-              <h2>{{ board.title }}</h2>
-              <p class="muted">{{ board.description || 'Sem descrição.' }}</p>
-              <p class="board-created-date">Criado em {{ board.created_at | date: 'dd/MM/yyyy' }}</p>
-              <div class="row">
-                <span class="small muted">Somente leitura</span
-                ><span class="text-link">Abrir quadro <app-icon name="arrow-right" /></span>
-              </div>
-            </div>
-          </a>
-        } @empty {
-          <div class="panel empty">
-            @if (boards().length === 0) {
-              <h2>Nenhum quadro disponível</h2>
-              <p>Você ainda não participa de nenhum quadro.</p>
-              @if (canCreate()) {
-                <button class="button primary" type="button" (click)="openCreateForm()">
-                  <app-icon name="plus" /> Criar primeiro quadro
-                </button>
-              }
-            } @else {
-              <h2>Nenhum quadro encontrado</h2>
-              <p>Tente outro nome ou limpe a busca.</p>
-              <button class="button secondary" type="button" (click)="query.set('')">
-                Limpar busca
-              </button>
-            }
-          </div>
-        }
-      </div>
-    }
-    @if (createFormOpen()) {
-      <button
-        class="drawer-backdrop"
-        type="button"
-        aria-label="Fechar novo quadro"
-        (click)="closeCreateForm()"
-      ></button>
-      <section
-        class="task-drawer board-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-board-title"
-      >
-        <header class="drawer-header">
-          <div>
-            <h2 id="new-board-title">Novo quadro</h2>
-            <p class="muted">Crie um espaço para organizar o trabalho da equipe.</p>
-          </div>
-          <button
-            class="icon-button"
-            type="button"
-            aria-label="Fechar"
-            (click)="closeCreateForm()"
-            [disabled]="creating()"
-          >
-            <app-icon name="close" />
-          </button>
-        </header>
-        <form class="task-form" [formGroup]="form" (ngSubmit)="createBoard()">
-          <label
-            >Nome do quadro<input
-              formControlName="title"
-              maxlength="200"
-              placeholder="Ex.: Rotina da equipe"
-            />
-            @if (form.controls.title.touched && form.controls.title.invalid) {
-              <span class="field-error">Informe o nome do quadro.</span>
-            }
-          </label>
-          <label
-            >Descrição <span class="muted">(opcional)</span
-            ><textarea
-              formControlName="description"
-              rows="4"
-              placeholder="Descreva o objetivo deste quadro"
-            ></textarea>
-          </label>
-          @if (context()?.role === 'administrador') {
-            <label
-              >Departamento<select formControlName="departmentId">
-                <option value="">Selecione</option>
-                @for (department of departments(); track department.id) {
-                  <option [value]="department.id">{{ department.name }}</option>
-                }
-              </select>
-              @if (form.controls.departmentId.touched && form.controls.departmentId.invalid) {
-                <span class="field-error">Selecione um departamento.</span>
-              }
-            </label>
-          }
-          @if (creationError()) {
-            <p class="form-error" role="alert">{{ creationError() }}</p>
-          }
-          <div class="drawer-actions">
-            <button
-              class="button tertiary"
-              type="button"
-              (click)="closeCreateForm()"
-              [disabled]="creating()"
-            >
-              Cancelar</button
-            ><button class="button primary" type="submit" [disabled]="creating()">
-              <app-icon name="plus" />{{ creating() ? 'Criando…' : 'Criar quadro' }}
-            </button>
-          </div>
-        </form>
-      </section>
-    }
-  `,
+  imports: [PageHeading, RouterLink, Icon, ReactiveFormsModule, DatePipe, CdkTrapFocus],
+  templateUrl: './boards.html',
+  styleUrl: './boards.scss',
 })
 export class Boards implements OnInit {
   private readonly service = inject(BoardsService);
   private readonly destroyRef = inject(DestroyRef);
   readonly boards = signal<BoardSummary[]>([]);
+  readonly management = signal<Record<string, boolean>>({});
   readonly loading = signal(true);
   readonly error = signal('');
   readonly query = signal('');
@@ -205,14 +50,31 @@ export class Boards implements OnInit {
     this.loading.set(true);
     this.error.set('');
     this.boards.set([]);
+    this.management.set({});
     try {
       const boards = await this.service.list();
-      if (!this.destroyRef.destroyed) this.boards.set(boards);
+      if (!this.destroyRef.destroyed) {
+        this.boards.set(boards);
+        void this.loadManagement(boards);
+      }
     } catch {
       if (!this.destroyRef.destroyed)
         this.error.set('Não foi possível carregar os quadros. Tente novamente.');
     } finally {
       if (!this.destroyRef.destroyed) this.loading.set(false);
+    }
+  }
+
+  private async loadManagement(boards: BoardSummary[]): Promise<void> {
+    const entries = await Promise.all(
+      boards.map(async (board) => {
+        // Reuse the detail capability: global role alone does not define board access.
+        const allowed = await this.service.canManageStructure(board.id).catch(() => false);
+        return [board.id, allowed] as const;
+      }),
+    );
+    if (!this.destroyRef.destroyed && this.boards() === boards) {
+      this.management.set(Object.fromEntries(entries));
     }
   }
 

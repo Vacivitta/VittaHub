@@ -1,0 +1,200 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.boards-list {
+  container-type: inline-size;
+}
+.boards-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 24px;
+}
+.boards-search {
+  position: relative;
+  width: min(100%, 360px);
+  margin: 0;
+}
+.search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.boards-search app-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.boards-search input {
+  margin-top: 0;
+  height: 44px;
+  padding-left: 42px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.boards-search input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.boards-count {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.boards-toolbar .button {
+  min-height: 44px;
+  margin-left: auto;
+}
+.boards-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.board-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+.board-tile:hover,
+.board-tile:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+.board-tile:active {
+  transform: translateY(0);
+}
+.board-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.board-icon {
+  display: inline-flex;
+  padding: 9px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sidebar);
+  color: var(--brand-primary);
+}
+.board-department {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-align: right;
+}
+.board-tile h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.board-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+.board-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.board-date {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 11px;
+}
+.board-permission {
+  color: var(--text-secondary);
+}
+.board-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand-primary);
+  font-weight: 650;
+}
+.board-tile:hover .board-open {
+  color: var(--brand-primary-strong);
+}
+.boards-state {
+  grid-column: 1 / -1;
+  padding: 20px 0;
+  color: var(--text-secondary);
+}
+.boards-state h2 {
+  font-size: 17px;
+  color: var(--text-primary);
+}
+.boards-state p {
+  margin: 8px 0 16px;
+}
+.board-tile:focus-visible,
+.boards-search input:focus-visible,
+.boards-list button:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+@container (min-width: 580px) {
+  .boards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (min-width: 920px) {
+  .boards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 579px) {
+  .boards-search {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  .board-tile:hover,
+  .board-tile:focus-visible {
+    transform: none;
+  }
+}

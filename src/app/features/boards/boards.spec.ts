@@ -9,6 +9,7 @@ describe('Boards', () => {
   const getCreationContext = vi.fn();
   const listDepartments = vi.fn();
   const create = vi.fn();
+  const canManageStructure = vi.fn();
   const boards: BoardSummary[] = [
     {
       id: 'board-1',
@@ -33,11 +34,15 @@ describe('Boards', () => {
       .mockResolvedValue({ role: 'membro', department_id: 'department-1', can_create: false });
     listDepartments.mockReset().mockResolvedValue([]);
     create.mockReset().mockResolvedValue('board-new');
+    canManageStructure.mockReset().mockResolvedValue(false);
     TestBed.configureTestingModule({
       imports: [Boards],
       providers: [
         provideRouter([]),
-        { provide: BoardsService, useValue: { list, getCreationContext, listDepartments, create } },
+        {
+          provide: BoardsService,
+          useValue: { list, getCreationContext, listDepartments, create, canManageStructure },
+        },
       ],
     });
   });
@@ -106,10 +111,16 @@ describe('Boards', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.board-tile').length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.boards-count').textContent).toContain(
+      '1 quadro disponível',
+    );
     input.value = 'inexistente';
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Nenhum quadro encontrado');
+    expect(fixture.nativeElement.querySelector('.boards-count').textContent).toContain(
+      '0 quadros disponíveis',
+    );
     fixture.nativeElement.querySelector('button').click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.board-tile').length).toBe(2);
@@ -163,7 +174,131 @@ describe('Boards', () => {
 
   it('does not render board creation for a member', async () => {
     const fixture = await render();
-    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button');
-    expect(Array.from(buttons).some((button) => button.textContent?.includes('Novo quadro'))).toBe(false);
+    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      'button',
+    );
+    expect(Array.from(buttons).some((button) => button.textContent?.includes('Novo quadro'))).toBe(
+      false,
+    );
+  });
+
+  it('uses each board capability instead of inferring management from the global role', async () => {
+    canManageStructure.mockImplementation(async (id: string) => id === 'board-1');
+    const fixture = await render();
+    await vi.waitFor(() => expect(fixture.componentInstance.management()['board-1']).toBe(true));
+    fixture.detectChanges();
+    const tiles = fixture.nativeElement.querySelectorAll('.board-tile');
+    expect(tiles[0].textContent).toContain('Administra este quadro');
+    expect(tiles[1].textContent).toContain('Acesso ao quadro');
+    expect(fixture.nativeElement.textContent).not.toContain('Somente leitura');
+    expect(canManageStructure.mock.calls).toEqual([['board-1'], ['board-2']]);
+  });
+
+  it('does not imply management for managers without the board capability', async () => {
+    getCreationContext.mockResolvedValue({
+      role: 'gestor',
+      department_id: 'department-1',
+      can_create: false,
+    });
+    const fixture = await render();
+    expect(fixture.nativeElement.textContent).not.toContain('Administra este quadro');
+    expect(fixture.nativeElement.textContent).not.toContain('Novo quadro');
+  });
+
+  it('keeps boards usable without claiming read-only access when the capability fails', async () => {
+    canManageStructure.mockRejectedValue(new Error('unavailable'));
+    const fixture = await render();
+    expect(fixture.nativeElement.querySelectorAll('.board-tile').length).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('Acesso ao quadro');
+    expect(fixture.nativeElement.textContent).not.toContain('Somente leitura');
+  });
+
+  it('offers the first-board action only when creation is authorized', async () => {
+    list.mockResolvedValue([]);
+    getCreationContext.mockResolvedValue({
+      role: 'gestor',
+      department_id: 'department-1',
+      can_create: true,
+    });
+    const fixture = await render();
+    const cta = fixture.nativeElement.querySelector('.boards-state button') as HTMLButtonElement;
+    expect(cta.textContent).toContain('Criar primeiro quadro');
+    cta.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it('keeps a single native link per card with an accessible title and real date', async () => {
+    const fixture = await render();
+    const element = fixture.nativeElement as HTMLElement;
+    const tiles = element.querySelectorAll<HTMLAnchorElement>('.board-tile');
+    tiles.forEach((tile, index) => {
+      expect(tile.tagName).toBe('A');
+      expect(tile.getAttribute('href')).toBe('/quadros/' + boards[index].id);
+      expect(tile.querySelector('a, button, input, [tabindex]')).toBeNull();
+      expect(tile.getAttribute('aria-labelledby')).toBe(tile.querySelector('h2')?.id);
+      expect(tile.querySelector('time')?.getAttribute('datetime')).toBe(boards[index].created_at);
+    });
+    expect(element.querySelector('label input[type="search"]')).not.toBeNull();
+    expect(element.querySelector('.boards-toolbar [aria-live="polite"]')).not.toBeNull();
+  });
+
+  it('focuses the creation form and restores focus when closed with Escape', async () => {
+    getCreationContext.mockResolvedValue({
+      role: 'gestor',
+      department_id: 'department-1',
+      can_create: true,
+    });
+    const fixture = await render();
+    const trigger = fixture.nativeElement.querySelector(
+      '.boards-toolbar button',
+    ) as HTMLButtonElement;
+    trigger.focus();
+    trigger.click();
+    // JSDOM has no layout; give the CDK visibility check a rendered field size.
+    const rects = vi
+      .spyOn(HTMLInputElement.prototype, 'getClientRects')
+      .mockReturnValue({ length: 1 } as DOMRectList);
+    fixture.detectChanges();
+    const title = fixture.nativeElement.querySelector(
+      '[formControlName="title"]',
+    ) as HTMLInputElement;
+    await fixture.whenStable();
+    rects.mockRestore();
+    expect(document.activeElement).toBe(title);
+    title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('associates validation errors with fields and keeps the drawer open while saving', async () => {
+    getCreationContext.mockResolvedValue({
+      role: 'administrador',
+      department_id: 'department-1',
+      can_create: true,
+    });
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    page.openCreateForm();
+    await page.createBoard();
+    fixture.detectChanges();
+    for (const name of ['title', 'departmentId']) {
+      const field = fixture.nativeElement.querySelector(
+        `[formControlName="${name}"]`,
+      ) as HTMLElement;
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      expect(
+        fixture.nativeElement.querySelector('#' + field.getAttribute('aria-describedby')),
+      ).not.toBeNull();
+    }
+    expect(create).not.toHaveBeenCalled();
+    page.creating.set(true);
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[role="dialog"]')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(page.createFormOpen()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.drawer-backdrop').disabled).toBe(true);
   });
 });
