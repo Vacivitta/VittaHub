@@ -30,8 +30,20 @@ describe('Admin', () => {
     getCreationContext: vi.fn(),
     listDepartments: vi.fn(),
   };
-  const teamService = { listTeamMembers: vi.fn() };
+  const teamService = { listTeamMembers: vi.fn(), getActivity: vi.fn() };
   beforeEach(() => {
+    teamService.getActivity
+      .mockReset()
+      .mockResolvedValue({
+        completed: 0,
+        in_progress: 0,
+        average_seconds: null,
+        duration_samples: 0,
+        total_events: 0,
+        events: [],
+        boards: [],
+        people: [],
+      });
     teamService.listTeamMembers.mockReset().mockResolvedValue([]);
     access.set(true);
     session.set({ user: { id: 'test-user' } });

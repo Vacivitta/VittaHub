@@ -69,6 +69,7 @@
       </div>
     }
   </section>
+  <app-admin-activity (accessDenied)="invalidateAccess()" />
   @if (!invalidSession()) {
     <section class="team-panel" aria-labelledby="team-title" [attr.aria-busy]="teamLoading()">
       <div class="managed-heading">

@@ -46,7 +46,24 @@ describe('Vacivitta interface', () => {
       imports: [App],
       providers: [
         provideRouter(routes),
-        { provide: AdminService, useValue: { listTeamMembers: vi.fn().mockResolvedValue([]) } },
+        {
+          provide: AdminService,
+          useValue: {
+            listTeamMembers: vi.fn().mockResolvedValue([]),
+            getActivity: vi
+              .fn()
+              .mockResolvedValue({
+                completed: 0,
+                in_progress: 0,
+                average_seconds: null,
+                duration_samples: 0,
+                total_events: 0,
+                events: [],
+                boards: [],
+                people: [],
+              }),
+          },
+        },
         { provide: AuthService, useValue: auth },
         {
           provide: BoardsService,

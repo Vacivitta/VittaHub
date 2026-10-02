@@ -1,0 +1,117 @@
+<section class="activity-panel" aria-labelledby="activity-title" [attr.aria-busy]="loading()">
+  <header class="activity-heading">
+    <div>
+      <p class="eyebrow">VISÃO GERENCIAL</p>
+      <h2 id="activity-title">Acompanhamento de atividades</h2>
+      <p class="muted">O ritmo das pendências nos quadros que você administra.</p>
+    </div>
+    @if (updatedAt()) {
+      <span class="updated">Atualizado às {{ updatedAt() | date: 'HH:mm' }}</span>
+    }
+  </header>
+  <div class="activity-filters">
+    <label
+      >Colaborador<select name="actor" [(ngModel)]="actorId" (ngModelChange)="filtersChanged()">
+        <option value="">Todos no escopo</option>
+        @for (person of people(); track person.id) {
+          <option [value]="person.id">{{ person.name || 'Nome não informado' }}</option>
+        }
+      </select></label
+    >
+    <label
+      >Quadro<select name="board" [(ngModel)]="boardId" (ngModelChange)="filtersChanged()">
+        <option value="">Todos os quadros</option>
+        @for (board of boards(); track board.id) {
+          <option [value]="board.id">{{ board.name }}</option>
+        }
+      </select></label
+    >
+    <label
+      >De<input
+        type="date"
+        name="from"
+        [(ngModel)]="from"
+        (ngModelChange)="filtersChanged()"
+        required
+    /></label>
+    <label
+      >Até<input type="date" name="to" [(ngModel)]="to" (ngModelChange)="filtersChanged()" required
+    /></label>
+    <button class="button secondary clear-filters" type="button" (click)="clearFilters()">
+      Limpar filtros
+    </button>
+  </div>
+  <p class="filter-note">
+    Período por data local, incluindo o último dia. Colaborador filtra o autor das ações; em
+    andamento, o responsável atual.
+  </p>
+  @if (loading()) {
+    <div class="activity-state" role="status">Carregando indicadores e atividades…</div>
+  } @else if (error()) {
+    <div class="activity-state">
+      <p role="alert">{{ error() }}</p>
+      <button class="button secondary" (click)="load()" type="button">Tentar novamente</button>
+    </div>
+  } @else if (data(); as dashboard) {
+    <div class="metrics">
+      <article class="metric">
+        <span>Concluídas no período</span><strong>{{ dashboard.completed }}</strong
+        ><small>Pendências com evento de conclusão</small>
+      </article>
+      <article class="metric">
+        <span>Em andamento agora</span><strong>{{ dashboard.in_progress }}</strong
+        ><small>Fazendo ou aguardando terceiro · sem recorte de período</small>
+      </article>
+      <article class="metric duration">
+        <span>Tempo médio decorrido</span><strong>{{ duration(dashboard.average_seconds) }}</strong
+        ><small>Início → conclusão · {{ dashboard.duration_samples }} com duração disponível</small>
+      </article>
+    </div>
+    <p class="duration-note">
+      Duração corrida, incluindo intervalos e espera. Não representa horas trabalhadas. Sem eventos
+      de início e conclusão, o tempo fica não disponível.
+    </p>
+    <div class="timeline-heading">
+      <div class="timeline-title">
+        <h3>Linha do tempo</h3>
+        <button class="button tertiary" type="button" (click)="load()" [disabled]="loading()">
+          Atualizar
+        </button>
+      </div>
+      <span>{{ dashboard.total_events }} atividades no período</span>
+    </div>
+    @if (dashboard.total_events > dashboard.events.length) {
+      <p class="filter-note">
+        Exibindo as {{ dashboard.events.length }} mais recentes. Refine o período para consultar
+        outras atividades; os indicadores consideram todo o filtro.
+      </p>
+    }
+    <ol class="timeline">
+      @for (event of dashboard.events; track event.id) {
+        <li [class.completed]="event.event_type === 'completed'">
+          <div class="event-top">
+            <span class="event-kind">{{ labels[event.event_type] || event.event_type }}</span
+            ><time [attr.datetime]="event.created_at">{{
+              event.created_at | date: 'dd/MM/yyyy HH:mm'
+            }}</time>
+          </div>
+          <p>
+            <strong>{{ event.actor_name || 'Autor indisponível' }}</strong> ·
+            <a [routerLink]="['/pendencias', event.task_id]">{{ event.task_title }}</a>
+          </p>
+          <p class="event-content">{{ event.content }}</p>
+          <div class="event-bottom">
+            <a [routerLink]="['/quadros', event.board_id]">{{ event.board_title }}</a>
+            @if (event.event_type === 'completed') {
+              <span>Tempo decorrido: {{ duration(event.elapsed_seconds) }}</span>
+            }
+          </div>
+        </li>
+      } @empty {
+        <li class="empty" role="status">
+          Nenhuma atividade encontrada para os filtros selecionados.
+        </li>
+      }
+    </ol>
+  }
+</section>

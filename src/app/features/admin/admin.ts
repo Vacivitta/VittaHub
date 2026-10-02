@@ -7,9 +7,10 @@ import { PageHeading } from '../../shared/page-heading';
 import { Icon } from '../../shared/icon';
 import { BoardsService } from '../boards/boards.service';
 import { BoardSummary } from '../boards/board-summary';
+import { AdminActivity } from './admin-activity';
 
 @Component({
-  imports: [PageHeading, Icon, RouterLink],
+  imports: [PageHeading, Icon, RouterLink, AdminActivity],
   templateUrl: './admin.html',
   styleUrl: './admin.scss',
 })
@@ -57,7 +58,7 @@ export class Admin implements OnInit {
     void this.loadTeam();
   }
 
-  private invalidateAccess(): void {
+  protected invalidateAccess(): void {
     this.revision++;
     this.teamRevision++;
     this.boards.set([]);

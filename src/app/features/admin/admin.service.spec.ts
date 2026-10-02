@@ -62,4 +62,70 @@ describe('AdminService', () => {
       AdminAccessError,
     );
   });
+
+  const filters = {
+    from: '2026-10-01T00:00:00Z',
+    to: '2026-10-03T00:00:00Z',
+    actorId: 'actor',
+    boardId: 'board',
+  };
+  it('sends dashboard filters without client authorization claims', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        completed: 0,
+        in_progress: 0,
+        average_seconds: null,
+        duration_samples: 0,
+        total_events: 0,
+        events: [],
+        boards: [],
+        people: [],
+      },
+      error: null,
+    });
+    expect((await TestBed.inject(AdminService).getActivity(filters)).completed).toBe(0);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('get_admin_activity', {
+      p_from: filters.from,
+      p_to: filters.to,
+      p_actor_id: 'actor',
+      p_board_id: 'board',
+    });
+  });
+  it('distinguishes dashboard authorization failure and query errors', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501' } });
+    await expect(TestBed.inject(AdminService).getActivity(filters)).rejects.toBeInstanceOf(
+      AdminAccessError,
+    );
+    rpc.mockResolvedValue({ data: null, error: { code: '500' } });
+    await expect(TestBed.inject(AdminService).getActivity(filters)).rejects.toThrow(
+      'Não foi possível carregar as atividades.',
+    );
+  });
+  it('rejects dashboard calls without access and late results after a user change', async () => {
+    access.set(false);
+    await expect(TestBed.inject(AdminService).getActivity(filters)).rejects.toBeInstanceOf(
+      AdminAccessError,
+    );
+    expect(rpc).not.toHaveBeenCalled();
+    access.set(true);
+    rpc.mockImplementation(async () => {
+      session.set({ user: { id: 'other' } });
+      return {
+        data: {
+          completed: 0,
+          in_progress: 0,
+          average_seconds: null,
+          duration_samples: 0,
+          total_events: 0,
+          events: [],
+          boards: [],
+          people: [],
+        },
+        error: null,
+      };
+    });
+    await expect(TestBed.inject(AdminService).getActivity(filters)).rejects.toBeInstanceOf(
+      AdminAccessError,
+    );
+  });
 });
