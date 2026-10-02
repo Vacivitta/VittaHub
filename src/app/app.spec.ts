@@ -2,6 +2,7 @@
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
+import { AdminService } from './features/admin/admin.service';
 import { routes } from './app.routes';
 import { computed, signal } from '@angular/core';
 import { AuthService } from './core/auth/auth.service';
@@ -45,6 +46,7 @@ describe('Vacivitta interface', () => {
       imports: [App],
       providers: [
         provideRouter(routes),
+        { provide: AdminService, useValue: { listTeamMembers: vi.fn().mockResolvedValue([]) } },
         { provide: AuthService, useValue: auth },
         {
           provide: BoardsService,
@@ -59,6 +61,7 @@ describe('Vacivitta interface', () => {
             ]),
             getCreationContext: vi.fn().mockResolvedValue(null),
             canManageStructure: vi.fn().mockResolvedValue(false),
+            canManageStructureStrict: vi.fn().mockResolvedValue(false),
             createColumn: vi.fn(),
             renameColumn: vi.fn(),
             getById: vi.fn().mockImplementation(async (id: string) =>

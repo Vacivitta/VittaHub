@@ -136,6 +136,17 @@ export class BoardsService {
     }
   }
 
+  async canManageStructureStrict(boardId: string): Promise<boolean> {
+    const userId = await this.authenticatedUser();
+    const { data, error } = await this.client.rpc('can_manage_board_structure', {
+      p_board_id: boardId,
+    });
+    if (error || typeof data !== 'boolean' || this.auth.session()?.user.id !== userId) {
+      throw new Error('Não foi possível consultar a permissão do quadro.');
+    }
+    return data;
+  }
+
   async renameColumn(columnId: string, name: string): Promise<void> {
     const userId = await this.authenticatedUser();
     try {

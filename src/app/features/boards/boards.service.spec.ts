@@ -250,4 +250,15 @@ describe('BoardsService', () => {
     await service.deleteBoard('board-1');
     expect(client.rpc).toHaveBeenLastCalledWith('delete_board', { p_board_id: 'board-1' });
   });
+
+  it('preserves false but rejects RPC failures in the strict administrative path', async () => {
+    const service = TestBed.inject(BoardsService);
+    client.rpc.mockResolvedValue({ data: false, error: null });
+    expect(await service.canManageStructureStrict('board-1')).toBe(false);
+    client.rpc.mockResolvedValue({ data: null, error: { code: '500' } });
+    await expect(service.canManageStructureStrict('board-1')).rejects.toThrow();
+    expect(await service.canManageStructure('board-1')).toBe(false);
+    client.rpc.mockResolvedValue({ data: true, error: null });
+    expect(await service.canManageStructureStrict('board-1')).toBe(true);
+  });
 });

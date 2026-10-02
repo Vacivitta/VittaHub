@@ -52,6 +52,49 @@ dd {
   gap: 12px;
   margin-bottom: 16px;
 }
+.team-panel {
+  margin-top: 32px;
+}
+.team-count {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.team-panel label {
+  display: block;
+  margin-bottom: 8px;
+}
+.team-panel input {
+  width: 100%;
+  max-width: 460px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.team-panel input:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+.team-grid {
+  margin-top: 20px;
+}
+.team-person {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.team-person h3 {
+  font-size: 17px;
+}
+.team-person dl {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 0;
+}
 .managed-heading h2 {
   margin: 0;
   font-size: 18px;

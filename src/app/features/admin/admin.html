@@ -1,4 +1,6 @@
-@if (auth.canAccessAdministration()) {
+@if (invalidSession()) {
+  <p role="alert">Sua sessão não tem acesso à administração. Retornando ao início…</p>
+} @else if (auth.canAccessAdministration()) {
   <app-page-heading
     title="Administração"
     description="Seu perfil e os quadros que você administra."
@@ -67,4 +69,59 @@
       </div>
     }
   </section>
+  @if (!invalidSession()) {
+    <section class="team-panel" aria-labelledby="team-title" [attr.aria-busy]="teamLoading()">
+      <div class="managed-heading">
+        <h2 id="team-title">Equipe e acessos</h2>
+        @if (!teamLoading() && !teamError()) {
+          <span class="team-count" aria-live="polite"
+            >{{ team().length }} pessoas no seu escopo de acesso</span
+          >
+        }
+      </div>
+      @if (teamLoading()) {
+        <p role="status">Carregando a equipe…</p>
+      } @else if (teamError()) {
+        <div class="admin-state">
+          <p role="alert">{{ teamError() }}</p>
+          <button class="button secondary" type="button" (click)="loadTeam()">
+            Tentar novamente
+          </button>
+        </div>
+      } @else if (team().length === 0) {
+        <p role="status">Nenhuma pessoa disponível no seu escopo de acesso.</p>
+      } @else {
+        <label for="team-search">Buscar por nome ou departamento</label>
+        <input
+          id="team-search"
+          type="search"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
+        <div class="managed-grid team-grid">
+          @for (person of filteredTeam(); track person.id) {
+            <article class="team-person">
+              <h3>{{ person.display_name || 'Nome não informado' }}</h3>
+              <dl>
+                <div>
+                  <dt>Papel</dt>
+                  <dd>{{ roleLabels[person.role] }}</dd>
+                </div>
+                <div>
+                  <dt>Departamento</dt>
+                  <dd>{{ person.department_name }}</dd>
+                </div>
+                <div>
+                  <dt>Situação</dt>
+                  <dd>{{ person.is_active ? 'Ativo' : 'Inativo' }}</dd>
+                </div>
+              </dl>
+            </article>
+          } @empty {
+            <p role="status">Nenhuma pessoa encontrada para esta busca.</p>
+          }
+        </div>
+      }
+    </section>
+  }
 }
