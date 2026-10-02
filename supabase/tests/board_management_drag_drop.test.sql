@@ -75,13 +75,13 @@ select is((select business_state::text from public.tasks where id = 'a5000000-00
 select throws_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001', 'a4000000-0000-4000-8000-000000000003')$$, '22023', null::text, 'cross-board move rejected');
 
 select set_config('request.jwt.claim.sub', 'a1000000-0000-4000-8000-000000000005', true);
-select throws_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001', 'a4000000-0000-4000-8000-000000000001')$$, '42501', null::text, 'unrelated board member cannot move shared task');
+select lives_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001', 'a4000000-0000-4000-8000-000000000001')$$, 'active unrelated board member can move shared task');
 select throws_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000002', 'a4000000-0000-4000-8000-000000000002')$$, '42501', null::text, 'private task visibility does not grant movement');
 
 select set_config('request.jwt.claim.sub', 'a1000000-0000-4000-8000-000000000001', true);
 select lives_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000002', 'a4000000-0000-4000-8000-000000000002')$$, 'system admin can move private task');
 select is((select business_state::text from public.tasks where id = 'a5000000-0000-4000-8000-000000000002'), 'a_fazer', 'private task business state is preserved');
-select is((select count(*)::integer from public.task_events where event_type = 'column_moved' and task_id in ('a5000000-0000-4000-8000-000000000001','a5000000-0000-4000-8000-000000000002')), 2, 'successful moves record system events');
+select is((select count(*)::integer from public.task_events where event_type = 'column_moved' and task_id in ('a5000000-0000-4000-8000-000000000001','a5000000-0000-4000-8000-000000000002')), 3, 'successful moves record system events');
 
 select * from finish();
 rollback;

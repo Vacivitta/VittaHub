@@ -291,4 +291,54 @@ describe('TaskDetailPage', () => {
     expect(listHistory).not.toHaveBeenCalled();
     expect(listComments).not.toHaveBeenCalled();
   });
+  it('renders authorized actor names, timestamps and descriptions for all supported events', async () => {
+    const events = [
+      'accepted',
+      'started',
+      'column_moved',
+      'waiting_third_party',
+      'resumed',
+      'completed',
+    ].map((type, index) => ({
+      id: 'event-' + index,
+      task_id: id,
+      event_type: type,
+      content: 'Description ' + type,
+      actor_id: 'former-participant',
+      actor_display_name: 'Pessoa do histórico',
+      created_at: '2026-09-28T13:00:00Z',
+      is_system: true,
+    }));
+    listHistory.mockResolvedValue([
+      ...events,
+      { ...events[0], id: 'unnamed', actor_display_name: null },
+    ]);
+    const harness = await render();
+    const entries = harness.routeNativeElement!.querySelectorAll('.history-entry');
+    expect(entries).toHaveLength(7);
+    events.forEach((event, index) => {
+      expect(entries[index].textContent).toContain(event.content);
+      expect(entries[index].textContent).toContain('Pessoa do histórico');
+      expect(entries[index].textContent).toMatch(/28\/09\/2026 \d{2}:00/);
+      expect(entries[index].textContent).not.toContain('former-participant');
+    });
+    expect(entries[6].textContent).toContain('Autor indisponível');
+  });
+  it('discards named history when the session changes while loading', async () => {
+    let resolve!: (value: unknown[]) => void;
+    listHistory.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const harness = await render();
+    getById.mockResolvedValue({ status: 'unavailable' });
+    session.set(null);
+    harness.detectChanges();
+    resolve([{ id: 'old', content: 'Old event', actor_display_name: 'Old person' }]);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).not.toContain('Old person');
+    expect((harness.routeDebugElement!.componentInstance as TaskDetailPage).history()).toEqual([]);
+  });
 });

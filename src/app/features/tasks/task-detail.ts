@@ -41,6 +41,7 @@ export type TaskResult =
   | { status: 'unavailable' | 'error' };
 
 export interface TaskEvent {
+  actor_display_name: string | null;
   id: string;
   task_id: string;
   event_type: string;

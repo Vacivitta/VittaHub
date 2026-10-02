@@ -96,7 +96,7 @@ describe('TasksService', () => {
     ).toEqual({ status: 'unavailable' });
   });
 
-  it('loads immutable task history in stable chronological order', async () => {
+  it('loads named history through the task-scoped RPC', async () => {
     const events = [
       {
         id: 'event-1',
@@ -108,14 +108,12 @@ describe('TasksService', () => {
         created_at: '2026-09-28T12:00:00Z',
       },
     ];
-    returns.mockResolvedValue({ data: events, error: null });
+    client.rpc.mockResolvedValue({ data: events, error: null });
     expect(await TestBed.inject(TasksService).listHistory('task-1')).toEqual(events);
-    expect(client.from).toHaveBeenCalledExactlyOnceWith('task_events');
-    expect(query.eq).toHaveBeenCalledExactlyOnceWith('task_id', 'task-1');
-    expect(query.order.mock.calls).toEqual([
-      ['created_at', { ascending: true }],
-      ['id', { ascending: true }],
-    ]);
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith('list_task_history', {
+      p_task_id: 'task-1',
+    });
+    expect(client.from).not.toHaveBeenCalled();
   });
 
   it('loads comments in stable chronological order', async () => {
@@ -259,5 +257,17 @@ describe('TasksService', () => {
     await expect(TestBed.inject(TasksService).list('board-1')).rejects.toThrow(
       'Não foi possível carregar as pendências.',
     );
+  });
+
+  it('hides history query errors and rejects late results after session changes', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'secret' } });
+    await expect(TestBed.inject(TasksService).listHistory('hidden')).rejects.toThrow(
+      'Não foi possível carregar o histórico',
+    );
+    client.rpc.mockImplementation(async () => {
+      session.set({ user: { id: 'other' } });
+      return { data: [{ actor_display_name: 'Previous person' }], error: null };
+    });
+    await expect(TestBed.inject(TasksService).listHistory('task-1')).rejects.toThrow();
   });
 });

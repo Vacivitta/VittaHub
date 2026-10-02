@@ -549,6 +549,7 @@ export class BoardPage {
   constructor() {
     effect((onCleanup) => {
       const id = this.params()?.get('id') ?? '';
+      const userId = this.auth.session()?.user.id;
       this.attempt();
       let active = true;
       onCleanup(() => {
@@ -568,7 +569,7 @@ export class BoardPage {
       this.closeNewColumn();
       this.cancelRename();
       this.formOpen.set(false);
-      void this.load(id, () => active);
+      void this.load(id, () => active && this.auth.session()?.user.id === userId);
     });
   }
 
@@ -685,7 +686,14 @@ export class BoardPage {
     return (
       this.movingTaskId() !== task.id &&
       !!userId &&
-      (this.canManage() || task.assignee_id === userId || task.created_by === userId)
+      this.auth.profile()?.id === userId &&
+      this.auth.profile()?.is_active === true &&
+      this.board()?.id === task.board_id &&
+      this.tasks().some((visible) => visible.id === task.id) &&
+      (!task.is_private ||
+        this.canManage() ||
+        task.assignee_id === userId ||
+        task.created_by === userId)
     );
   }
 

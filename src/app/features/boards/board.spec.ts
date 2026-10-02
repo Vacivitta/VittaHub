@@ -22,6 +22,10 @@ describe('BoardPage', () => {
   const deleteBoard = vi.fn();
   const moveToColumn = vi.fn();
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
+  const profile = signal<{ id: string; is_active: boolean } | null>({
+    id: 'user-1',
+    is_active: true,
+  });
   const board: BoardDetail = {
     id,
     title: 'Quadro de Testes',
@@ -63,6 +67,7 @@ describe('BoardPage', () => {
   ];
 
   beforeEach(() => {
+    profile.set({ id: 'user-1', is_active: true });
     session.set({ user: { id: 'user-1' } });
     getById.mockReset().mockResolvedValue({ status: 'loaded', board });
     list.mockReset().mockResolvedValue(tasks);
@@ -94,7 +99,7 @@ describe('BoardPage', () => {
           },
         },
         { provide: TasksService, useValue: { list, listAssignees, create, moveToColumn } },
-        { provide: AuthService, useValue: { session } },
+        { provide: AuthService, useValue: { session, profile } },
       ],
     });
   });
@@ -309,11 +314,15 @@ describe('BoardPage', () => {
     const harness = await render();
     const page = harness.routeDebugElement!.componentInstance as BoardPage;
     expect(harness.routeNativeElement?.textContent).toContain('Criado em 29/09/2026 às 10:42');
-    expect(harness.routeNativeElement?.querySelector('[aria-label="Ações administrativas do quadro"]')).toBeNull();
+    expect(
+      harness.routeNativeElement?.querySelector('[aria-label="Ações administrativas do quadro"]'),
+    ).toBeNull();
 
     page.canManage.set(true);
     harness.detectChanges();
-    expect(harness.routeNativeElement?.querySelector('[aria-label="Ações administrativas do quadro"]')).not.toBeNull();
+    expect(
+      harness.routeNativeElement?.querySelector('[aria-label="Ações administrativas do quadro"]'),
+    ).not.toBeNull();
     expect(harness.routeNativeElement?.textContent).toContain('Nova coluna');
     expect(harness.routeNativeElement?.querySelector('.new-column-card')).toBeNull();
   });
@@ -338,7 +347,9 @@ describe('BoardPage', () => {
     canManageStructure.mockResolvedValue(true);
     getById.mockResolvedValue({ status: 'loaded', board: { ...board, columns: [] } });
     const harness = await render();
-    expect(harness.routeNativeElement?.textContent).toContain('Este quadro ainda não possui colunas.');
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'Este quadro ainda não possui colunas.',
+    );
     expect(harness.routeNativeElement?.textContent).toContain('Criar primeira coluna');
     expect(harness.routeNativeElement?.querySelector('.new-column-card')).toBeNull();
   });
@@ -357,7 +368,9 @@ describe('BoardPage', () => {
     await page.confirmDeletion();
     harness.detectChanges();
     expect(deleteColumn).toHaveBeenCalledExactlyOnceWith('column-1');
-    expect(harness.routeNativeElement?.textContent).toContain('Mova as pendências antes de excluí-la.');
+    expect(harness.routeNativeElement?.textContent).toContain(
+      'Mova as pendências antes de excluí-la.',
+    );
     expect(page.board()?.columns).toHaveLength(2);
   });
 
@@ -420,5 +433,37 @@ describe('BoardPage', () => {
     expect(page.tasksForColumn('column-1').map((task) => task.id)).toEqual(['task-1']);
     page.filter.set('completed');
     expect(page.tasksForColumn('column-1').map((task) => task.id)).toEqual(['task-3']);
+  });
+
+  it('allows an unrelated active participant to move shared tasks but not private tasks', async () => {
+    const unrelated = tasks.map((task) => ({ ...task, created_by: 'other', assignee_id: 'other' }));
+    list.mockResolvedValue(unrelated);
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    expect(page.canMove(page.tasks()[0])).toBe(true);
+    expect(page.canMove(page.tasks()[1])).toBe(false);
+    await page.dropTask({ item: { data: page.tasks()[0] } } as never, 'column-2');
+    expect(moveToColumn).toHaveBeenCalledExactlyOnceWith('task-1', 'column-2');
+    expect(page.tasks()[0].business_state).toBe('aguardando_aceite');
+    await page.dropTask({ item: { data: page.tasks()[0] } } as never, 'column-2');
+    expect(moveToColumn).toHaveBeenCalledTimes(1);
+    page.canManage.set(true);
+    expect(page.canMove(page.tasks()[1])).toBe(true);
+  });
+  it('rejects inactive, missing or mismatched profiles and tasks outside the loaded board', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    expect(page.canMove({ ...page.tasks()[0], board_id: 'other' })).toBe(false);
+    expect(page.canMove({ ...page.tasks()[0], id: 'hidden' })).toBe(false);
+    for (const value of [
+      null,
+      { id: 'user-1', is_active: false },
+      { id: 'other', is_active: true },
+    ]) {
+      profile.set(value);
+      expect(page.canMove(page.tasks()[0])).toBe(false);
+      await page.dropTask({ item: { data: page.tasks()[0] } } as never, 'column-2');
+    }
+    expect(moveToColumn).not.toHaveBeenCalled();
   });
 });

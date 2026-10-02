@@ -154,6 +154,9 @@ import { Icon } from '../../shared/icon';
           @for (event of history(); track event.id) {
             <div class="history-entry">
               <strong>{{ event.content }}</strong>
+              <span class="small">{{
+                event.actor_display_name?.trim() || 'Autor indisponível'
+              }}</span>
               <span class="small muted">{{ event.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
             </div>
           } @empty {
@@ -257,6 +260,7 @@ export class TaskDetailPage {
   constructor() {
     effect((onCleanup) => {
       const id = this.params()?.get('id') ?? '';
+      const userId = this.auth.session()?.user.id;
       this.attempt();
       let active = true;
       onCleanup(() => {
@@ -274,7 +278,7 @@ export class TaskDetailPage {
       this.thirdPartyExplanation.set('');
       this.feedback.set('');
       this.actionError.set('');
-      void this.load(id, () => active);
+      void this.load(id, () => active && this.auth.session()?.user.id === userId);
     });
   }
 
@@ -300,14 +304,20 @@ export class TaskDetailPage {
   }
 
   private async loadHistory(taskId: string, isActive: () => boolean = () => true): Promise<void> {
+    const userId = this.auth.session()?.user.id;
+    const current = () =>
+      isActive() && this.task()?.id === taskId && this.auth.session()?.user.id === userId;
     try {
       const history = await this.service.listHistory(taskId);
-      if (isActive()) {
+      if (current()) {
         this.history.set(history);
         this.historyError.set('');
       }
     } catch {
-      if (isActive()) this.historyError.set('Histórico indisponível.');
+      if (current()) {
+        this.history.set([]);
+        this.historyError.set('Histórico indisponível.');
+      }
     }
   }
 

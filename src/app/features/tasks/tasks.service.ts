@@ -95,13 +95,9 @@ export class TasksService {
   async listHistory(taskId: string): Promise<TaskEvent[]> {
     const userId = await this.authenticatedUser();
     try {
-      const { data, error } = await this.client
-        .from('task_events')
-        .select('id, task_id, event_type, content, actor_id, is_system, created_at')
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true })
-        .order('id', { ascending: true })
-        .returns<TaskEvent[]>();
+      const { data, error } = await this.client.rpc('list_task_history', {
+        p_task_id: taskId,
+      });
       if (error || this.auth.session()?.user.id !== userId) throw new Error();
       return data ?? [];
     } catch {
