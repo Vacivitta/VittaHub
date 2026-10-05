@@ -9,6 +9,15 @@ export interface AdminTeamMember {
 
 export class AdminAccessError extends Error {}
 
+export interface AdminBoardMember {
+  id: string;
+  display_name: string | null;
+  is_active: boolean;
+  is_board_admin: boolean;
+}
+
+export type BoardMemberAction = 'add' | 'remove' | 'promote';
+
 export interface ActivityFilters {
   from: string;
   to: string;

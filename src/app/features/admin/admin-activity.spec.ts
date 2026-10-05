@@ -56,6 +56,46 @@ describe('AdminActivity', () => {
   }
   afterEach(() => vi.useRealTimers());
 
+  it('starts collapsed and preserves data and filters when toggled; searches only filter options', async () => {
+    const fixture = await render();
+    const page = fixture.componentInstance;
+    const details = fixture.nativeElement.querySelector('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    const data = page.data();
+    const search = fixture.nativeElement.querySelector(
+      '[aria-label="Pesquisar colaborador"]',
+    ) as HTMLInputElement;
+    search.value = 'missing';
+    search.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(page.filteredPeople()).toEqual([]);
+    page.boardSearch = 'missing';
+    expect(page.filteredBoards()).toEqual([]);
+    page.actorId = 'person';
+    page.boardId = 'board';
+    fixture.detectChanges();
+    expect(page.filteredPeople()).toEqual(dashboard.people);
+    expect(page.filteredBoards()).toEqual(dashboard.boards);
+    details.querySelector('summary')!.click();
+    fixture.detectChanges();
+    expect(details.open).toBe(true);
+    details.querySelector('summary')!.click();
+    fixture.detectChanges();
+    expect(details.open).toBe(false);
+    expect(page.data()).toBe(data);
+    expect(page.actorId).toBe('person');
+    expect(page.actorSearch).toBe('missing');
+    expect(getActivity).toHaveBeenCalledTimes(1);
+    page.clearFilters();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.actorId).toBe('');
+    expect(page.boardId).toBe('');
+    expect(page.actorSearch).toBe('');
+    expect(page.boardSearch).toBe('');
+    expect(getActivity).toHaveBeenCalledTimes(2);
+  });
+
   it('clears every filter to its default with one query, cancelling pending debounce', async () => {
     const fixture = await render();
     vi.useFakeTimers();

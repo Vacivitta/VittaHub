@@ -15,6 +15,7 @@ describe('BoardPage', () => {
   const listAssignees = vi.fn();
   const create = vi.fn();
   const canManageStructure = vi.fn();
+  const canManageColumns = vi.fn();
   const createColumn = vi.fn();
   const renameColumn = vi.fn();
   const updateBoard = vi.fn();
@@ -22,7 +23,7 @@ describe('BoardPage', () => {
   const deleteBoard = vi.fn();
   const moveToColumn = vi.fn();
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
-  const profile = signal<{ id: string; is_active: boolean } | null>({
+  const profile = signal<{ id: string; is_active: boolean; role?: string } | null>({
     id: 'user-1',
     is_active: true,
   });
@@ -67,6 +68,8 @@ describe('BoardPage', () => {
   ];
 
   beforeEach(() => {
+    localStorage.clear();
+    canManageColumns.mockReset().mockImplementation(() => canManageStructure());
     profile.set({ id: 'user-1', is_active: true });
     session.set({ user: { id: 'user-1' } });
     getById.mockReset().mockResolvedValue({ status: 'loaded', board });
@@ -91,6 +94,7 @@ describe('BoardPage', () => {
           useValue: {
             getById,
             canManageStructure,
+            canManageColumns,
             createColumn,
             renameColumn,
             updateBoard,
@@ -110,6 +114,73 @@ describe('BoardPage', () => {
     harness.detectChanges();
     return harness;
   }
+
+  it('lets a local member admin manage columns but not the board', async () => {
+    profile.set({ id: 'user-1', is_active: true, role: 'membro' });
+    canManageColumns.mockResolvedValue(true);
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    expect(harness.routeNativeElement!.textContent).toContain('Você administra este quadro');
+    expect(harness.routeNativeElement!.textContent).not.toContain('Gerenciar quadro');
+    page.openNewColumn(); page.newColumnName.set('Nova'); await page.createColumn();
+    expect(createColumn).toHaveBeenCalledWith(id, 'Nova');
+    page.startRename(board.columns[0]); page.renameColumnName.set('Renomeada');
+    await page.renameColumn(board.columns[0]);
+    expect(renameColumn).toHaveBeenCalledWith('column-1', 'Renomeada');
+    page.requestDeleteColumn(board.columns[1]); await page.confirmDeletion();
+    expect(deleteColumn).toHaveBeenCalledWith('column-2');
+    page.openEditBoard(); page.requestDeleteBoard();
+    expect(page.editBoardOpen()).toBe(false);
+    expect(page.confirmation()).toBeNull();
+    expect(updateBoard).not.toHaveBeenCalled(); expect(deleteBoard).not.toHaveBeenCalled();
+  });
+
+  it.each(['gestor', 'administrador', 'inactive', 'common'])('hides local notice for %s', async role => {
+    profile.set({ id: 'user-1', is_active: role !== 'inactive', role: role === 'common' || role === 'inactive' ? 'membro' : role });
+    canManageColumns.mockResolvedValue(role !== 'common' && role !== 'inactive');
+    const harness = await render();
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).toBeNull();
+  });
+
+  it('drops column controls and notice when navigating to a board without local administration', async () => {
+    profile.set({ id: 'user-1', is_active: true, role: 'membro' });
+    canManageColumns.mockResolvedValue(true);
+    const harness = await render();
+    canManageColumns.mockResolvedValue(false);
+    const other = '22222222-2222-4222-8222-222222222222';
+    getById.mockResolvedValue({ status: 'loaded', board: { ...board, id: other } });
+    await harness.navigateByUrl(`/quadros/${other}`);
+    await harness.fixture.whenStable(); harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).toBeNull();
+    expect(harness.routeNativeElement!.querySelector('.column-menu')).toBeNull();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    page.openNewColumn();
+    expect(page.newColumnOpen()).toBe(false);
+  });
+
+  it('persists notice dismissal per user and board and tolerates unavailable storage', async () => {
+    profile.set({ id: 'user-1', is_active: true, role: 'membro' });
+    canManageColumns.mockResolvedValue(true);
+    const harness = await render();
+    (harness.routeNativeElement!.querySelector('.local-admin-notice button') as HTMLButtonElement).click();
+    harness.detectChanges();
+    expect(localStorage.getItem(`vittahub:board-admin-notice:user-1:${id}`)).toBe('1');
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).toBeNull();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    page.retry(); await harness.fixture.whenStable(); harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).toBeNull();
+    const other = '22222222-2222-4222-8222-222222222222';
+    getById.mockResolvedValue({status: 'loaded', board: {...board, id: other}});
+    await harness.navigateByUrl(`/quadros/${other}`); await harness.fixture.whenStable(); harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).not.toBeNull();
+    getById.mockResolvedValue({status: 'loaded', board});
+    session.set({user: {id: 'user-2'}});
+    await harness.navigateByUrl(`/quadros/${id}`); await harness.fixture.whenStable(); harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.local-admin-notice')).not.toBeNull();
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('disabled'); });
+    expect(() => (harness.routeDebugElement!.componentInstance as BoardPage).dismissLocalAdminNotice()).not.toThrow();
+    storage.mockRestore();
+  });
 
   it('shows loading until the board request finishes', async () => {
     let resolve!: (value: BoardResult) => void;
@@ -319,6 +390,7 @@ describe('BoardPage', () => {
     ).toBeNull();
 
     page.canManage.set(true);
+    page.canManageColumns.set(true);
     harness.detectChanges();
     expect(
       harness.routeNativeElement?.querySelector('[aria-label="Ações administrativas do quadro"]'),

@@ -1,5 +1,5 @@
-<section class="activity-panel" aria-labelledby="activity-title" [attr.aria-busy]="loading()">
-  <header class="activity-heading">
+<details class="activity-panel" [attr.aria-busy]="loading()">
+  <summary class="activity-heading">
     <div>
       <p class="eyebrow">VISÃO GERENCIAL</p>
       <h2 id="activity-title">Acompanhamento de atividades</h2>
@@ -8,20 +8,39 @@
     @if (updatedAt()) {
       <span class="updated">Atualizado às {{ updatedAt() | date: 'HH:mm' }}</span>
     }
-  </header>
+    <span class="chevron" aria-hidden="true">⌄</span>
+  </summary>
   <div class="activity-filters">
     <label
-      >Colaborador<select name="actor" [(ngModel)]="actorId" (ngModelChange)="filtersChanged()">
+      >Colaborador<input
+        type="search"
+        aria-label="Pesquisar colaborador"
+        [(ngModel)]="actorSearch"
+      /><select
+        name="actor"
+        aria-label="Colaborador"
+        [(ngModel)]="actorId"
+        (ngModelChange)="filtersChanged()"
+      >
         <option value="">Todos no escopo</option>
-        @for (person of people(); track person.id) {
+        @for (person of filteredPeople(); track person.id) {
           <option [value]="person.id">{{ person.name || 'Nome não informado' }}</option>
         }
       </select></label
     >
     <label
-      >Quadro<select name="board" [(ngModel)]="boardId" (ngModelChange)="filtersChanged()">
+      >Quadro<input
+        type="search"
+        aria-label="Pesquisar quadro de atividades"
+        [(ngModel)]="boardSearch"
+      /><select
+        name="board"
+        aria-label="Quadro"
+        [(ngModel)]="boardId"
+        (ngModelChange)="filtersChanged()"
+      >
         <option value="">Todos os quadros</option>
-        @for (board of boards(); track board.id) {
+        @for (board of filteredBoards(); track board.id) {
           <option [value]="board.id">{{ board.name }}</option>
         }
       </select></label
@@ -114,4 +133,4 @@
       }
     </ol>
   }
-</section>
+</details>

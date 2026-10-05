@@ -53,6 +53,17 @@ describe('BoardsService', () => {
     expect(query.order).toHaveBeenCalledExactlyOnceWith('title', { ascending: true });
   });
 
+  it('checks column capability independently and fails closed on error or session change', async () => {
+    const service = TestBed.inject(BoardsService);
+    client.rpc.mockResolvedValue({ data: true, error: null });
+    expect(await service.canManageColumns('board')).toBe(true);
+    expect(client.rpc).toHaveBeenCalledWith('can_manage_board_columns', { p_board_id: 'board' });
+    client.rpc.mockResolvedValue({ data: true, error: {code: '42501'} });
+    expect(await service.canManageColumns('board')).toBe(false);
+    client.rpc.mockImplementation(async () => { session.set(null); return { data: true, error: null }; });
+    expect(await service.canManageColumns('board')).toBe(false);
+  });
+
   it('waits for the existing session restoration before querying', async () => {
     let restore!: () => void;
     auth.ready = new Promise<void>((resolve) => {

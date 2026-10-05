@@ -30,6 +30,28 @@ export class AdminActivity implements OnInit {
   to = this.localDate(0);
   actorId = '';
   boardId = '';
+  actorSearch = '';
+  boardSearch = '';
+
+  filteredPeople() {
+    return this.people().filter(
+      (p) =>
+        p.id === this.actorId ||
+        (p.name ?? '')
+          .toLocaleLowerCase('pt-BR')
+          .includes(this.actorSearch.trim().toLocaleLowerCase('pt-BR')),
+    );
+  }
+
+  filteredBoards() {
+    return this.boards().filter(
+      (b) =>
+        b.id === this.boardId ||
+        b.name
+          .toLocaleLowerCase('pt-BR')
+          .includes(this.boardSearch.trim().toLocaleLowerCase('pt-BR')),
+    );
+  }
   readonly labels: Record<string, string> = {
     accepted: 'Aceite',
     started: 'Início',
@@ -141,6 +163,8 @@ export class AdminActivity implements OnInit {
   }
 
   clearFilters(): void {
+    this.actorSearch = '';
+    this.boardSearch = '';
     this.actorId = '';
     this.boardId = '';
     this.from = this.localDate(-29);

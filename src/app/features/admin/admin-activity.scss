@@ -201,3 +201,20 @@ a:focus-visible {
     align-items: flex-start;
   }
 }
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+.chevron {
+  transform: rotate(-90deg);
+}
+details[open] .chevron {
+  transform: rotate(0deg);
+}

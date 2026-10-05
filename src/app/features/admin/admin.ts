@@ -8,9 +8,10 @@ import { Icon } from '../../shared/icon';
 import { BoardsService } from '../boards/boards.service';
 import { BoardSummary } from '../boards/board-summary';
 import { AdminActivity } from './admin-activity';
+import { AdminParticipants } from './admin-participants';
 
 @Component({
-  imports: [PageHeading, Icon, RouterLink, AdminActivity],
+  imports: [PageHeading, Icon, RouterLink, AdminActivity, AdminParticipants],
   templateUrl: './admin.html',
   styleUrl: './admin.scss',
 })

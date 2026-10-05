@@ -121,6 +121,16 @@ export class BoardsService {
     }
   }
 
+  async canManageColumns(boardId: string): Promise<boolean> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc('can_manage_board_columns', { p_board_id: boardId });
+      return !error && this.auth.session()?.user.id === userId && data === true;
+    } catch {
+      return false;
+    }
+  }
+
   async createColumn(boardId: string, name: string): Promise<string> {
     const userId = await this.authenticatedUser();
     try {

@@ -1,0 +1,77 @@
+:host {
+  display: block;
+  margin-top: 32px;
+  min-width: 0;
+}
+details {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+label {
+  display: block;
+  margin: 12px 0 8px;
+}
+select,
+input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+ul {
+  list-style: none;
+  padding: 0;
+}
+li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+li span {
+  flex: 1 1 240px;
+  overflow-wrap: anywhere;
+}
+.confirmation {
+  padding: 16px;
+  background: var(--surface-sidebar);
+  border-radius: var(--radius-sm);
+}
+.confirmation button {
+  margin: 4px;
+}
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 3px;
+}
+summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.chevron {
+  transform: rotate(-90deg);
+}
+details[open] .chevron {
+  transform: rotate(0deg);
+}

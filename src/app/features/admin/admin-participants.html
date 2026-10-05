@@ -1,0 +1,120 @@
+<details open [attr.aria-busy]="loading() || saving()">
+  <summary>
+    <h2 id="participants-title">Participantes dos quadros</h2>
+    <span class="chevron" aria-hidden="true">⌄</span>
+  </summary>
+  <label for="participants-board-search">Pesquisar quadro administrado</label>
+  <input
+    id="participants-board-search"
+    type="search"
+    [value]="boardSearch()"
+    (input)="boardSearch.set($any($event.target).value)"
+  />
+  <label for="participants-board">Quadro administrado</label>
+  <select
+    id="participants-board"
+    [value]="boardId()"
+    [disabled]="saving()"
+    (change)="selectBoard($any($event.target).value)"
+  >
+    <option value="">Selecione um quadro</option>
+    @for (board of filteredBoards(); track board.id) {
+      <option [value]="board.id">{{ board.title }}</option>
+    }
+  </select>
+  @if (error()) {
+    <p role="alert">{{ error() }}</p>
+  }
+  @if (success()) {
+    <p role="status">{{ success() }}</p>
+  }
+  @if (loading()) {
+    <p role="status">Carregando participantes…</p>
+  }
+  @if (saving()) {
+    <p role="status">Salvando alteração…</p>
+  }
+  @if (boardId() && !loading()) {
+    <button class="button secondary" [disabled]="saving()" (click)="load()">
+      Atualizar participantes
+    </button>
+    @if (!error()) {
+      <div class="add-member">
+        <label for="participant-user-search">Pesquisar usuário elegível</label>
+        <input
+          id="participant-user-search"
+          type="search"
+          [value]="userSearch()"
+          (input)="userSearch.set($any($event.target).value)"
+        />
+        <label for="participant-user">Usuário ativo elegível</label>
+        <select
+          id="participant-user"
+          [value]="selectedUser()"
+          [disabled]="saving()"
+          (change)="selectedUser.set($any($event.target).value)"
+        >
+          <option value="">Selecione uma pessoa</option>
+          @for (person of filteredCandidates(); track person.id) {
+            <option [value]="person.id">
+              {{ person.display_name || 'Nome não informado' }} — {{ person.department_name }}
+            </option>
+          }
+        </select>
+        <button
+          class="button secondary"
+          [disabled]="saving() || !selectedUser()"
+          (click)="request('add', selectedUser())"
+        >
+          Adicionar participante
+        </button>
+        @if (!candidates().length) {
+          <p>Nenhum usuário ativo elegível disponível.</p>
+        }
+      </div>
+      <ul>
+        @for (member of members(); track member.id) {
+          <li>
+            <span
+              >{{ member.display_name || 'Nome não informado' }} —
+              {{ member.is_board_admin ? 'Administrador do quadro' : 'Participante'
+              }}{{ member.is_active ? '' : ' · Inativo' }}</span
+            >
+            @if (!member.is_board_admin) {
+              <button
+                class="button secondary"
+                [disabled]="saving()"
+                (click)="request('remove', member.id)"
+              >
+                Remover
+              </button>
+              @if (canPromote(member)) {
+                <button
+                  class="button secondary"
+                  [disabled]="saving()"
+                  (click)="request('promote', member.id)"
+                >
+                  Promover a administrador
+                </button>
+              }
+            }
+          </li>
+        } @empty {
+          <li>Nenhum participante neste quadro.</li>
+        }
+      </ul>
+    }
+  }
+  @if (pending(); as action) {
+    <div class="confirmation" role="group" aria-labelledby="participant-confirm">
+      <p id="participant-confirm">{{ labels[action.action] }}: {{ action.name }}?</p>
+      @if (action.action === 'promote') {
+        <p>Esta área não permite rebaixar administradores.</p>
+      }
+      <button class="button primary" [disabled]="saving()" (click)="confirm()">Confirmar</button>
+      <button class="button secondary" [disabled]="saving()" (click)="pending.set(null)">
+        Cancelar
+      </button>
+    </div>
+  }
+</details>

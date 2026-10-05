@@ -13,6 +13,17 @@ import { BoardColumn, BoardResult, BUSINESS_STATE_LABELS } from './board-detail'
 import { BoardsService } from './boards.service';
 
 @Component({
+  styles: `
+    .board-heading { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+    .board-heading app-page-heading { flex: 1 1 300px; min-width: 0; }
+    .local-admin-notice { position: relative; margin-left: auto; max-width: 340px; padding: 12px 40px 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; }
+    .local-admin-notice strong { color: var(--text-primary); font-size: 13px; }
+    .local-admin-notice p { margin: 6px 0 0; }
+    .local-admin-notice button { position: absolute; right: 2px; top: 2px; width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: 20px; cursor: pointer; }
+    .local-admin-notice button:hover, .local-admin-notice button:focus-visible { color: var(--text-primary); background: var(--surface-sidebar); }
+    .local-admin-notice button:focus-visible { outline: 2px solid var(--brand-primary); }
+    @media (max-width: 600px) { .local-admin-notice { max-width: none; width: 100%; margin-bottom: 16px; } }
+  `,
   imports: [
     RouterLink,
     PageHeading,
@@ -28,11 +39,20 @@ import { BoardsService } from './boards.service';
     @if (result().status === 'loading') {
       <div class="panel empty" role="status">Carregando quadro…</div>
     } @else if (board(); as current) {
+      <div class="board-heading">
       <app-page-heading
         [title]="current.title"
         [description]="current.description || 'Sem descrição.'"
         [eyebrow]="current.department?.name || 'Departamento indisponível'"
       />
+      @if (showLocalAdminNotice()) {
+        <aside class="local-admin-notice" aria-label="Administração deste quadro">
+          <button type="button" aria-label="Dispensar aviso de administração do quadro" (click)="dismissLocalAdminNotice()">×</button>
+          <strong>Você administra este quadro</strong>
+          <p>Você pode organizar as colunas e usar as permissões adicionais disponíveis neste quadro.</p>
+        </aside>
+      }
+      </div>
       <div class="board-info">
         <div class="board-context-actions">
           <span class="board-created-at"
@@ -48,7 +68,7 @@ import { BoardsService } from './boards.service';
             >
               <app-icon name="plus" /> Nova pendência
             </button>
-            @if (canManage() && current.columns.length) {
+            @if (canManageColumns() && current.columns.length) {
               <button class="button secondary" type="button" (click)="openNewColumn()">
                 <app-icon name="plus" /> Nova coluna
               </button>
@@ -370,7 +390,7 @@ import { BoardsService } from './boards.service';
                 } @else {
                   <h2>{{ column.title }}</h2>
                   <span class="column-count">{{ tasksForColumn(column.id).length }}</span>
-                  @if (canManage()) {
+                  @if (canManageColumns()) {
                     <button
                       class="column-menu"
                       type="button"
@@ -449,7 +469,7 @@ import { BoardsService } from './boards.service';
         <section class="panel empty empty-board" role="status">
           <h2>Este quadro ainda não possui colunas.</h2>
           <p>Crie a primeira coluna para começar a organizar as pendências.</p>
-          @if (canManage()) {
+          @if (canManageColumns()) {
             @if (newColumnOpen()) {
               <div class="first-column-form">
                 <label for="first-column-name">Nome da primeira coluna</label
@@ -517,6 +537,19 @@ export class BoardPage {
   readonly creating = signal(false);
   readonly creationError = signal('');
   readonly canManage = signal(false);
+  readonly canManageColumns = signal(false);
+  readonly noticeDismissed = signal(false);
+  readonly showLocalAdminNotice = computed(() => this.auth.profile()?.role === 'membro' &&
+    this.auth.profile()?.is_active === true && this.canManageColumns() && !this.noticeDismissed());
+
+  private noticeKey(): string {
+    return 'vittahub:board-admin-notice:' + this.auth.session()?.user.id + ':' + this.board()?.id;
+  }
+
+  dismissLocalAdminNotice(): void {
+    this.noticeDismissed.set(true);
+    try { localStorage.setItem(this.noticeKey(), '1'); } catch { /* Storage may be unavailable. */ }
+  }
   readonly boardMenuOpen = signal(false);
   readonly columnMenuId = signal<string | null>(null);
   readonly editBoardOpen = signal(false);
@@ -562,6 +595,8 @@ export class BoardPage {
       this.managementError.set('');
       this.managementFeedback.set('');
       this.canManage.set(false);
+      this.canManageColumns.set(false);
+      this.noticeDismissed.set(false);
       this.boardMenuOpen.set(false);
       this.columnMenuId.set(null);
       this.editBoardOpen.set(false);
@@ -581,15 +616,18 @@ export class BoardPage {
       if (result.status !== 'loaded') return;
       this.contentLoading.set(true);
       try {
-        const [tasks, assignees, canManage] = await Promise.all([
+        const [tasks, assignees, canManage, canManageColumns] = await Promise.all([
           this.tasksService.list(id),
           this.tasksService.listAssignees(id),
           this.boardsService.canManageStructure(id),
+          this.boardsService.canManageColumns(id),
         ]);
         if (!isActive()) return;
         this.tasks.set(tasks);
         this.assignees.set(assignees);
         this.canManage.set(canManage);
+        this.canManageColumns.set(canManageColumns);
+        try { this.noticeDismissed.set(localStorage.getItem(this.noticeKey()) === '1'); } catch { /* Keep notice visible. */ }
       } catch {
         if (isActive()) this.contentError.set('Tente novamente em instantes.');
       } finally {
@@ -771,7 +809,7 @@ export class BoardPage {
     this.confirmation.set({ kind: 'board' });
   }
   requestDeleteColumn(column: BoardColumn): void {
-    if (!this.canManage()) return;
+    if (!this.canManageColumns()) return;
     this.columnMenuId.set(null);
     this.confirmation.set({ kind: 'column', column });
   }
@@ -781,7 +819,7 @@ export class BoardPage {
   async confirmDeletion(): Promise<void> {
     const board = this.board();
     const confirmation = this.confirmation();
-    if (!board || !confirmation || !this.canManage() || this.deleting()) return;
+    if (!board || !confirmation || !(confirmation.kind === 'column' ? this.canManageColumns() : this.canManage()) || this.deleting()) return;
     this.deleting.set(true);
     this.managementError.set('');
     this.managementFeedback.set('');
@@ -815,7 +853,7 @@ export class BoardPage {
   }
 
   openNewColumn(): void {
-    if (!this.canManage()) return;
+    if (!this.canManageColumns()) return;
     this.managementError.set('');
     this.managementFeedback.set('');
     this.newColumnName.set('');
@@ -829,7 +867,7 @@ export class BoardPage {
   async createColumn(): Promise<void> {
     const board = this.board();
     const name = this.newColumnName().trim();
-    if (!board || !this.canManage() || this.columnBusy()) return;
+    if (!board || !this.canManageColumns() || this.columnBusy()) return;
     if (!name) {
       this.managementError.set('Informe o nome da coluna.');
       return;
@@ -859,7 +897,7 @@ export class BoardPage {
   }
 
   startRename(column: BoardColumn): void {
-    if (!this.canManage()) return;
+    if (!this.canManageColumns()) return;
     this.managementError.set('');
     this.managementFeedback.set('');
     this.columnMenuId.set(null);
@@ -873,7 +911,7 @@ export class BoardPage {
   }
   async renameColumn(column: BoardColumn): Promise<void> {
     const name = this.renameColumnName().trim();
-    if (!this.canManage() || this.columnBusy()) return;
+    if (!this.canManageColumns() || this.columnBusy()) return;
     if (!name) {
       this.managementError.set('Informe o novo nome da coluna.');
       return;

@@ -69,6 +69,11 @@
       </div>
     }
   </section>
+  <app-admin-participants
+    [boards]="boards()"
+    (accessDenied)="invalidateAccess()"
+    (changed)="loadTeam()"
+  />
   <app-admin-activity (accessDenied)="invalidateAccess()" />
   @if (!invalidSession()) {
     <section class="team-panel" aria-labelledby="team-title" [attr.aria-busy]="teamLoading()">

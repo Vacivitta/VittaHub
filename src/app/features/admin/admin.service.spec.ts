@@ -69,6 +69,39 @@ describe('AdminService', () => {
     actorId: 'actor',
     boardId: 'board',
   };
+  it('lists board participants using only the target board ID', async () => {
+    await TestBed.inject(AdminService).listBoardMembers('board');
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('list_admin_board_members', {
+      p_board_id: 'board',
+    });
+  });
+  it.each(['add', 'remove', 'promote'] as const)(
+    'sends %s without actor or role claims',
+    async (action) => {
+      await TestBed.inject(AdminService).changeBoardMember('board', 'target', action);
+      expect(rpc).toHaveBeenCalledExactlyOnceWith('manage_admin_board_member', {
+        p_board_id: 'board',
+        p_user_id: 'target',
+        p_action: action,
+      });
+    },
+  );
+  it('rejects membership requests without access and SQL denials', async () => {
+    access.set(false);
+    await expect(TestBed.inject(AdminService).listBoardMembers('board')).rejects.toBeInstanceOf(
+      AdminAccessError,
+    );
+    expect(rpc).not.toHaveBeenCalled();
+    access.set(true);
+    rpc.mockResolvedValue({ error: { code: '42501' } });
+    await expect(
+      TestBed.inject(AdminService).changeBoardMember('board', 'target', 'add'),
+    ).rejects.toBeInstanceOf(AdminAccessError);
+    rpc.mockResolvedValue({ error: { code: '22023', message: 'secret' } });
+    await expect(
+      TestBed.inject(AdminService).changeBoardMember('board', 'target', 'add'),
+    ).rejects.toThrow('Não foi possível concluir');
+  });
   it('sends dashboard filters without client authorization claims', async () => {
     rpc.mockResolvedValue({
       data: {
