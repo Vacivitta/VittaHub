@@ -160,6 +160,7 @@ main:has(.chat-page) { padding: 0; }
 .workspace:has(.chat-page) .workspace-footer { display: none; }
 @media (min-width: 721px) {
   :host(.sidebar-collapsed) {
+    app-decision-badge { position: absolute; top: 0; right: -3px; }
     .sidebar { width: 80px; padding-inline: 12px; }
     .workspace { margin-left: 80px; }
     .sidebar-brand { align-self: center; }

@@ -8,13 +8,15 @@ import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
 import { BoardAssignee, TaskComment, TaskEvent, TaskResult } from './task-detail';
 import { TasksService } from './tasks.service';
 import { Icon } from '../../shared/icon';
+import { TaskAssignmentActions } from './task-assignment-actions';
 
 @Component({
-  imports: [RouterLink, PageHeading, DatePipe, Icon],
+  imports: [RouterLink, PageHeading, DatePipe, Icon, TaskAssignmentActions],
   template: `
     <a class="back-link" routerLink="/minhas-pendencias"
       ><app-icon name="arrow-left" /> Minhas pendências</a
     >
+    @if (assignmentFeedback()) { <p role="status">{{ assignmentFeedback() }}</p> }
     @if (result().status === 'loading') {
       <div class="panel empty" role="status">Carregando pendência…</div>
     } @else if (task(); as current) {
@@ -28,7 +30,7 @@ import { Icon } from '../../shared/icon';
           <section class="panel task-detail-panel">
             <div class="task-detail-state">
               <span class="badge" [attr.data-state]="current.business_state">{{
-                labels[current.business_state]
+                current.awaiting_reassignment ? 'Aguardando reatribuição' : labels[current.business_state]
               }}</span>
               <span
                 class="badge"
@@ -43,7 +45,7 @@ import { Icon } from '../../shared/icon';
             <dl class="task-detail-grid">
               <div>
                 <dt>Responsável</dt>
-                <dd>{{ assigneeName() || 'Nome indisponível' }}</dd>
+                <dd>{{ current.awaiting_reassignment ? 'Sem responsável ativo' : assigneeName() || 'Nome indisponível' }}</dd>
               </div>
               <div>
                 <dt>Prazo</dt>
@@ -147,13 +149,14 @@ import { Icon } from '../../shared/icon';
                 >
               }
             </div>
+            <app-task-assignment-actions [task]="current" (changed)="assignmentChanged($event)" />
           </section>
         </div>
         <aside class="panel task-history-panel" aria-label="Histórico da pendência">
           <h2>Histórico</h2>
           @for (event of history(); track event.id) {
             <div class="history-entry">
-              <strong>{{ event.content }}</strong>
+              <strong>{{ historyContent(event) }}</strong>
               <span class="small">{{
                 event.actor_display_name?.trim() || 'Autor indisponível'
               }}</span>
@@ -230,6 +233,7 @@ export class TaskDetailPage {
   readonly thirdPartyExplanation = signal('');
   readonly transitioning = signal(false);
   readonly feedback = signal('');
+  readonly assignmentFeedback = signal('');
   readonly actionError = signal('');
   readonly result = signal<TaskResult | { status: 'loading' }>({ status: 'loading' });
   readonly task = computed(() => {
@@ -277,6 +281,7 @@ export class TaskDetailPage {
       this.thirdPartyFormOpen.set(false);
       this.thirdPartyExplanation.set('');
       this.feedback.set('');
+      this.assignmentFeedback.set('');
       this.actionError.set('');
       void this.load(id, () => active && this.auth.session()?.user.id === userId);
     });
@@ -333,7 +338,7 @@ export class TaskDetailPage {
     }
   }
 
-  private nameFor(id: string | undefined): string {
+  private nameFor(id: string | null | undefined): string {
     if (!id) return '';
     if (this.auth.profile()?.id === id) return this.auth.displayName();
     return (
@@ -345,6 +350,43 @@ export class TaskDetailPage {
 
   commentAuthorName(id: string): string {
     return this.nameFor(id);
+  }
+
+  historyContent(event: TaskEvent): string {
+    const details = event.details;
+    const previous = this.localDateTime(details?.['previous_due_at']);
+    const requested = this.localDateTime(details?.['requested_due_at']);
+    const next = this.localDateTime(details?.['new_due_at']);
+    const reason = typeof details?.['justification'] === 'string'
+      ? details['justification'].trim()
+      : '';
+
+    if (event.event_type === 'postponement_requested' && previous && requested && reason) {
+      return `Adiamento solicitado de ${previous} para ${requested}. Motivo: ${reason}.`;
+    }
+    if (event.event_type === 'postponement_approved' && previous && next) {
+      const requester = event.content.match(/^Adiamento solicitado por (.*?) aprovado:/)?.[1];
+      return `${requester ? `Adiamento solicitado por ${requester} aprovado` : 'Adiamento aprovado'}: prazo de ${previous} para ${next}.`;
+    }
+    if (event.event_type === 'postponement_rejected' && previous && reason) {
+      const requester = event.content.match(/^Adiamento solicitado por (.*?) recusado\./)?.[1];
+      return `${requester ? `Adiamento solicitado por ${requester} recusado` : 'Adiamento recusado'} (prazo mantido em ${previous}). Motivo: ${reason}.`;
+    }
+    if (event.event_type === 'due_at_changed' && previous && next && reason) {
+      return `Prazo alterado diretamente de ${previous} para ${next}. Motivo: ${reason}.`;
+    }
+    return event.content;
+  }
+
+  private localDateTime(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return null;
+    const local = new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(date);
+    return local.replace(', ', ' às ');
   }
 
   actionLabel(action: 'accept' | 'start' | 'complete' | 'resume'): string {
@@ -444,5 +486,16 @@ export class TaskDetailPage {
 
   retry(): void {
     this.attempt.update((attempt) => attempt + 1);
+  }
+
+  async assignmentChanged(message: string): Promise<void> {
+    const id = this.task()?.id;
+    const userId = this.auth.session()?.user.id;
+    if (!id) return;
+    this.assignmentFeedback.set(message);
+    const refreshed = await this.service.getById(id);
+    if (this.task()?.id !== id || this.auth.session()?.user.id !== userId) return;
+    this.result.set(refreshed);
+    if (refreshed.status === 'loaded') await this.loadHistory(id);
   }
 }

@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { adminGuard } from './core/auth/admin.guard';
+import { activeUserGuard } from './core/auth/active-user.guard';
 
 export const routes: Routes = [
   {
@@ -44,6 +45,12 @@ export const routes: Routes = [
         path: 'chat',
         title: 'Chat | VittaHub',
         loadComponent: () => import('./features/chat/chat').then((m) => m.Chat),
+      },
+      {
+        path: 'solicitacoes',
+        canActivate: [activeUserGuard],
+        title: 'Solicitações | VittaHub',
+        loadComponent: () => import('./features/requests/requests').then((m) => m.Requests),
       },
       {
         path: 'administracao',

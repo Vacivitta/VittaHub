@@ -13,6 +13,7 @@ import {
 import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
 import { PageHeading } from '../../shared/page-heading';
 import { Icon } from '../../shared/icon';
+import { RequestsService } from '../requests/requests.service';
 @Component({
   imports: [RouterLink, PageHeading, Icon],
   templateUrl: './home.html',
@@ -20,6 +21,7 @@ import { Icon } from '../../shared/icon';
 })
 export class Home {
   readonly auth = inject(AuthService);
+  readonly requests = inject(RequestsService);
   private readonly service = inject(TasksService);
   readonly now = minuteClock();
   readonly tasks = signal<TaskWithContext[]>([]);

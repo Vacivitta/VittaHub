@@ -7,7 +7,9 @@ export interface TaskDetail {
   title: string;
   description: string | null;
   created_by: string;
-  assignee_id: string;
+  assignee_id: string | null;
+  awaiting_reassignment?: boolean;
+  refused_assignee_id?: string | null;
   due_at: string;
   business_state: BusinessState;
   is_private: boolean;
@@ -37,8 +39,7 @@ export interface TaskWithContext extends TaskDetail {
 }
 
 export type TaskResult =
-  | { status: 'loaded'; task: TaskWithContext }
-  | { status: 'unavailable' | 'error' };
+  { status: 'loaded'; task: TaskWithContext } | { status: 'unavailable' | 'error' };
 
 export interface TaskEvent {
   actor_display_name: string | null;
@@ -49,6 +50,7 @@ export interface TaskEvent {
   actor_id: string;
   is_system: boolean;
   created_at: string;
+  details?: Record<string, unknown> | null;
 }
 
 export interface TaskComment {
@@ -57,4 +59,23 @@ export interface TaskComment {
   author_id: string;
   content: string;
   created_at: string;
+}
+
+export interface TaskAssignmentCapabilities {
+  can_manage: boolean;
+  can_change_due_at: boolean;
+}
+
+export interface TaskPostponementRequest {
+  id: string;
+  task_id: string;
+  requested_by: string;
+  previous_due_at: string;
+  requested_due_at: string;
+  justification: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_justification: string | null;
 }

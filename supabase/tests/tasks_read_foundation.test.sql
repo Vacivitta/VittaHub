@@ -83,7 +83,7 @@ select ok(exists (select 1 from pg_constraint where conrelid='public.tasks'::reg
 select ok(exists (select 1 from pg_constraint where conrelid='public.board_columns'::regclass and conname='board_columns_board_id_id_key' and contype='u' and not condeferrable), 'referenced composite key is non-deferrable');
 
 -- Test 26
-select is((select count(*)::integer from pg_constraint where conrelid='public.tasks'::regclass and contype='f' and confdeltype='r'), 4, 'four restrictive foreign keys');
+select is((select count(*)::integer from pg_constraint where conrelid='public.tasks'::regclass and contype='f' and confdeltype='r'), 5, 'five restrictive foreign keys including the refused assignee (24A)');
 
 -- Test 27
 select ok(not exists (select 1 from pg_constraint where conrelid='public.tasks'::regclass and contype='f' and confrelid='public.board_memberships'::regclass), 'membership removal cannot delete or block on task FK');
@@ -155,7 +155,7 @@ select throws_ok($$insert into public.tasks (board_id, column_id, title, descrip
 select throws_ok($$insert into public.tasks (board_id, column_id, title, description, created_by, assignee_id, due_at, is_private) values ('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', 'Fixture task', null, null, '81000000-0000-4000-8000-000000000002', '2030-01-01 12:00:00+00', false)$$, '23502', null::text, 'created_by is mandatory');
 
 -- Test 35
-select throws_ok($$insert into public.tasks (board_id, column_id, title, description, created_by, assignee_id, due_at, is_private) values ('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', 'Fixture task', null, '81000000-0000-4000-8000-000000000001', null, '2030-01-01 12:00:00+00', false)$$, '23502', null::text, 'assignee_id is mandatory');
+select throws_ok($$insert into public.tasks (board_id, column_id, title, description, created_by, assignee_id, due_at, is_private) values ('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', 'Fixture task', null, '81000000-0000-4000-8000-000000000001', null, '2030-01-01 12:00:00+00', false)$$, '23514', null::text, 'assignee_id is required unless awaiting reassignment (24A)');
 
 -- Test 36
 select throws_ok($$insert into public.tasks (board_id, column_id, title, description, created_by, assignee_id, due_at, is_private) values ('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', 'Fixture task', null, '81000000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000002', null, false)$$, '23502', null::text, 'due_at is mandatory');

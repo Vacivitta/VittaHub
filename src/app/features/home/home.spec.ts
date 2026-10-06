@@ -5,6 +5,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { TasksService } from '../tasks/tasks.service';
 import { TaskWithContext } from '../tasks/task-detail';
 import { Home } from './home';
+import { RequestsService } from '../requests/requests.service';
 
 describe('Home operational attention', () => {
   const clock = new Date(2026, 8, 30, 10, 23).getTime();
@@ -29,7 +30,11 @@ describe('Home operational attention', () => {
     column: null,
   });
   const listMine = vi.fn();
+  const decisionCount = signal(0);
+  const highlighted = signal<string | null>(null);
   beforeEach(() => {
+    decisionCount.set(0);
+    highlighted.set(null);
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(clock);
     listMine
@@ -48,6 +53,7 @@ describe('Home operational attention', () => {
       imports: [Home],
       providers: [
         provideRouter([]),
+        { provide: RequestsService, useValue: { count: decisionCount, highlighted } },
         { provide: TasksService, useValue: { listMine } },
         { provide: AuthService, useValue: { displayName: signal('Pessoa Atual') } },
       ],
@@ -85,6 +91,18 @@ describe('Home operational attention', () => {
     ]);
     expect(fixture.nativeElement.textContent).not.toContain('Concluídas');
     expect(fixture.nativeElement.textContent).not.toContain('demonstração');
+  });
+
+  it('adds decisions only when needed and links to the highlighted item', async () => {
+    const fixture = await render();
+    expect(fixture.nativeElement.querySelector('.decisions-card')).toBeNull();
+    decisionCount.set(2); highlighted.set('postponement-request-1'); fixture.detectChanges();
+    const card = fixture.nativeElement.querySelector('.decisions-card');
+    expect(card.textContent).toContain('Decisões pendentes');
+    expect(card.querySelector('strong').textContent).toBe('2');
+    expect(card.getAttribute('href')).toBe('/solicitacoes#postponement-request-1');
+    decisionCount.set(0); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.decisions-card')).toBeNull();
   });
 
   it('uses browser date/time, ticks each minute and clears the timer on destroy', async () => {

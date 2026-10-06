@@ -1,0 +1,85 @@
+<app-page-heading
+  title="Solicitações"
+  description="Suas decisões e os pedidos que aguardam retorno."
+  eyebrow="Acompanhamento"
+/>
+<button type="button" (click)="service.refresh()" [disabled]="service.loading()">Atualizar</button>
+@if (feedback(); as result) {
+  <p class="note" role="status">
+    {{ result.message }} <a [routerLink]="['/pendencias', result.taskId]">Abrir pendência</a>
+  </p>
+}
+@if (service.loading()) {
+  <p role="status">Atualizando solicitações…</p>
+}
+@if (service.error()) {
+  <p role="alert">{{ service.error() }}</p>
+  <button type="button" (click)="service.refresh()">Tentar novamente</button>
+}
+@for (area of ['decide', 'waiting']; track area) {
+  <section [attr.aria-labelledby]="'requests-' + area" [attr.aria-busy]="service.loading()">
+    <h2 [id]="'requests-' + area">
+      {{ area === 'decide' ? 'Para você decidir' : 'Aguardando retorno' }}
+    </h2>
+    <div class="requests-grid">
+      @for (
+        item of area === 'decide' ? service.decisions() : service.waiting();
+        track item.item_key
+      ) {
+        <article
+          #requestCard
+          class="panel request-card"
+          tabindex="-1"
+          [id]="item.item_key"
+          [class.highlighted]="fragment() === item.item_key"
+          [attr.aria-label]="labels[item.kind] + ': ' + item.task.title"
+        >
+          <span class="badge">{{ labels[item.kind] }}</span>
+          <h3>
+            <a [routerLink]="['/pendencias', item.task.id]">{{ item.task.title }}</a>
+          </h3>
+          <p class="small">Criador: {{ item.creator_name || 'Nome indisponível' }}</p>
+          @if (item.task.awaiting_reassignment) {
+            <p class="small">
+              Recusada por: {{ item.refused_assignee_name || 'Nome indisponível' }}
+            </p>
+          } @else {
+            <p class="small">Responsável: {{ item.assignee_name || 'Nome indisponível' }}</p>
+          }
+          <p class="small">
+            Prazo atual:
+            <time [attr.datetime]="item.task.due_at">{{
+              item.task.due_at | date: 'dd/MM/yyyy HH:mm'
+            }}</time>
+          </p>
+          @if (item.request; as request) {
+            <p class="small">Solicitante: {{ item.requester_name || 'Nome indisponível' }}</p>
+            <p class="small">
+              Prazo solicitado: {{ request.requested_due_at | date: 'dd/MM/yyyy HH:mm' }}
+            </p>
+          }
+          @if (item.justification) {
+            <p class="justification">{{ item.justification }}</p>
+          }
+          @if (area === 'decide') {
+            <app-task-assignment-actions
+              [task]="item.task"
+              [context]="item.kind"
+              (changed)="resolved(item, $event)"
+            />
+          }
+        </article>
+      } @empty {
+        @if (!service.loading() && !service.error()) {
+          <p class="note">
+            {{
+              area === 'decide'
+                ? 'Nenhuma decisão pendente para você.'
+                : 'Nenhuma solicitação aguardando retorno.'
+            }}
+          </p>
+        }
+      }
+    </div>
+  </section>
+}

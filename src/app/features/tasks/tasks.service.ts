@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
+import { TaskChanges } from './task-changes';
 import {
   BoardAssignee,
   CreateTaskInput,
@@ -9,16 +10,19 @@ import {
   TaskEvent,
   TaskResult,
   TaskWithContext,
+  TaskAssignmentCapabilities,
+  TaskPostponementRequest,
 } from './task-detail';
 
 const TASK_FIELDS =
-  'id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at, accepted_at, completed_at';
+  'id, board_id, column_id, title, description, created_by, assignee_id, due_at, business_state, is_private, created_at, accepted_at, completed_at, awaiting_reassignment, refused_assignee_id';
 const TASK_WITH_CONTEXT_SELECT = `${TASK_FIELDS}, board:boards!tasks_board_id_fkey(id, title), column:board_columns!tasks_board_column_fkey(id, title)`;
 
 @Injectable({ providedIn: 'root' })
 export class TasksService {
   private readonly client = inject(SUPABASE_CLIENT);
   private readonly auth = inject(AuthService);
+  private readonly changes = inject(TaskChanges);
 
   async list(boardId: string): Promise<TaskDetail[]> {
     const userId = await this.authenticatedUser();
@@ -95,11 +99,21 @@ export class TasksService {
   async listHistory(taskId: string): Promise<TaskEvent[]> {
     const userId = await this.authenticatedUser();
     try {
-      const { data, error } = await this.client.rpc('list_task_history', {
-        p_task_id: taskId,
-      });
-      if (error || this.auth.session()?.user.id !== userId) throw new Error();
-      return data ?? [];
+      const [history, structured] = await Promise.all([
+        this.client.rpc('list_task_history', { p_task_id: taskId }),
+        this.client
+          .from('task_events')
+          .select('id, details')
+          .eq('task_id', taskId)
+          .in('event_type', ['postponement_requested', 'postponement_approved', 'postponement_rejected', 'due_at_changed'])
+          .returns<Pick<TaskEvent, 'id' | 'details'>[]>(),
+      ]);
+      if (history.error || structured.error || this.auth.session()?.user.id !== userId) throw new Error();
+      const detailsById = new Map((structured.data ?? []).map((event) => [event.id, event.details]));
+      return (history.data ?? []).map((event: TaskEvent) => ({
+        ...event,
+        details: detailsById.get(event.id) ?? null,
+      }));
     } catch {
       throw new Error('Não foi possível carregar o histórico da pendência.');
     }
@@ -206,6 +220,85 @@ export class TasksService {
     return userId;
   }
 
+  async assignmentCapabilities(taskId: string): Promise<TaskAssignmentCapabilities> {
+    const data = await this.assignmentRpc('task_assignment_capabilities', { p_task_id: taskId });
+    return data as TaskAssignmentCapabilities;
+  }
+
+  async listPostponements(taskId: string): Promise<TaskPostponementRequest[]> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client
+        .from('task_postponement_requests')
+        .select('*')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false })
+        .returns<TaskPostponementRequest[]>();
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      return data ?? [];
+    } catch {
+      throw new Error('Não foi possível carregar os pedidos de adiamento.');
+    }
+  }
+
+  refuseAssignment(taskId: string, justification: string): Promise<unknown> {
+    return this.assignmentRpc('refuse_task_assignment', {
+      p_task_id: taskId,
+      p_justification: justification.trim(),
+    });
+  }
+
+  reassign(taskId: string, assigneeId: string): Promise<unknown> {
+    return this.assignmentRpc('reassign_refused_task', {
+      p_task_id: taskId,
+      p_assignee_id: assigneeId,
+    });
+  }
+
+  requestPostponement(taskId: string, dueAt: string, justification: string): Promise<unknown> {
+    return this.assignmentRpc('request_task_postponement', {
+      p_task_id: taskId,
+      p_due_at: dueAt,
+      p_justification: justification.trim(),
+    });
+  }
+
+  decidePostponement(
+    taskId: string,
+    requestId: string,
+    approve: boolean,
+    justification: string,
+  ): Promise<unknown> {
+    return this.assignmentRpc('decide_task_postponement', {
+      p_task_id: taskId,
+      p_request_id: requestId,
+      p_approve: approve,
+      p_justification: justification.trim() || null,
+    });
+  }
+
+  changeDueAt(taskId: string, dueAt: string, justification: string): Promise<unknown> {
+    return this.assignmentRpc('change_task_due_at', {
+      p_task_id: taskId,
+      p_due_at: dueAt,
+      p_justification: justification.trim(),
+    });
+  }
+
+  private async assignmentRpc(rpc: string, args: Record<string, unknown>): Promise<unknown> {
+    const userId = await this.authenticatedUser();
+    try {
+      const { data, error } = await this.client.rpc(rpc, args);
+      if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      if (rpc !== 'task_assignment_capabilities') this.changes.notify();
+      return data;
+    } catch {
+      throw new Error(
+        'Não foi possível executar a ação. Atualize a pendência e confira sua permissão e os dados.',
+      );
+    }
+  }
+
   private async transition(
     rpc: 'accept_task' | 'start_task' | 'complete_task' | 'resume_task',
     taskId: string,
@@ -214,6 +307,7 @@ export class TasksService {
     try {
       const { error } = await this.client.rpc(rpc, { p_task_id: taskId });
       if (error || this.auth.session()?.user.id !== userId) throw new Error();
+      this.changes.notify();
     } catch {
       throw new Error('Não foi possível atualizar a pendência. Tente novamente.');
     }

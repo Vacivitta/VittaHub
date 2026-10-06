@@ -1,16 +1,25 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter } from 'rxjs';
 import { AuthService } from '../core/auth/auth.service';
 import { Icon, IconName } from '../shared/icon';
+import { RequestsService } from '../features/requests/requests.service';
+import { DecisionBadge } from '../features/requests/decision-badge';
 
 @Component({
   host: { '[class.sidebar-collapsed]': 'sidebarCollapsed()' },
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, Icon],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, Icon, DecisionBadge],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
 })
 export class Shell {
   readonly auth = inject(AuthService);
+  readonly requests = inject(RequestsService);
+  constructor() {
+    inject(Router).events.pipe(filter(event => event instanceof NavigationEnd), takeUntilDestroyed())
+      .subscribe(() => void this.requests.refresh());
+  }
   readonly signingOut = signal(false);
   readonly logoutError = signal('');
   readonly menuOpen = signal(false);
@@ -37,6 +46,7 @@ export class Shell {
     { path: '/quadros', label: 'Quadros', icon: 'boards' },
     { path: '/minhas-pendencias', label: 'Minhas Pendências', icon: 'tasks' },
     { path: '/chat', label: 'Chat', icon: 'chat' },
+    { path: '/solicitacoes', label: 'Solicitações', icon: 'check' },
     { path: '/administracao', label: 'Administração', icon: 'settings' },
   ] satisfies { path: string; label: string; icon: IconName }[];
   readonly visibleLinks = computed(() =>

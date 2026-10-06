@@ -647,7 +647,8 @@ export class BoardPage {
           : task.business_state !== 'concluido'),
     );
   }
-  assigneeName(id: string): string {
+  assigneeName(id: string | null): string {
+    if (!id) return 'Aguardando reatribuição';
     return (
       this.assignees()
         .find((person) => person.id === id)

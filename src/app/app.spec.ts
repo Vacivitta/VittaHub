@@ -9,6 +9,7 @@ import { AuthService } from './core/auth/auth.service';
 import { BoardsService } from './features/boards/boards.service';
 import { ChatService } from './features/chat/chat.service';
 import { TasksService } from './features/tasks/tasks.service';
+import { RequestsService } from './features/requests/requests.service';
 
 describe('Vacivitta interface', () => {
   const session = signal<object | null>({ user: { id: 'test-user' } });
@@ -46,6 +47,10 @@ describe('Vacivitta interface', () => {
       imports: [App],
       providers: [
         provideRouter(routes),
+        { provide: RequestsService, useValue: {
+          count: signal(0), highlighted: signal(null), loading: signal(false), error: signal(''),
+          decisions: signal([]), waiting: signal([]), refresh: vi.fn(),
+        } },
         {
           provide: AdminService,
           useValue: {
@@ -169,6 +174,7 @@ describe('Vacivitta interface', () => {
     ['/minhas-pendencias', 'Minhas Pendências'],
     ['/pendencias/11111111-1111-4111-8111-111111111111', 'Pendência não encontrada ou sem acesso'],
     ['/chat', 'Chat'],
+    ['/solicitacoes', 'Solicitações'],
     ['/administracao', 'Administração'],
     ['/endereco-inexistente', 'Página não encontrada'],
     ['/quadros/inexistente', 'Quadro não encontrado'],
@@ -188,7 +194,7 @@ describe('Vacivitta interface', () => {
     expect(
       harness.routeNativeElement?.querySelectorAll('nav[aria-label="Navegação principal"] a')
         .length,
-    ).toBe(url === '/administracao' ? 5 : 4);
+    ).toBe(url === '/administracao' ? 6 : 5);
   });
 
   it('redirects the root to the home page', async () => {
@@ -214,6 +220,7 @@ describe('Vacivitta interface', () => {
     '/minhas-pendencias',
     '/pendencias/11111111-1111-4111-8111-111111111111',
     '/chat',
+    '/solicitacoes',
     '/administracao',
     '/endereco-inexistente',
   ])('protects %s without a session', async (url) => {
@@ -234,6 +241,12 @@ describe('Vacivitta interface', () => {
     session.set({ user: { id: 'test-user' } });
     restore();
     await pending;
+    expect(TestBed.inject(Router).url).toBe('/inicio');
+  });
+
+  it('denies the requests route to an inactive authenticated member', async () => {
+    auth.profile.update(profile => profile ? { ...profile, is_active: false } : null);
+    await RouterTestingHarness.create('/solicitacoes');
     expect(TestBed.inject(Router).url).toBe('/inicio');
   });
 

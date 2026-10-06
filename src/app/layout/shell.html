@@ -32,10 +32,11 @@
           [routerLink]="link.path"
           routerLinkActive="active"
           ariaCurrentWhenActive="page"
-          [attr.aria-label]="link.label"
+          [attr.aria-label]="link.path === '/solicitacoes' && requests.count() > 0 ? link.label + ', ' + requests.count() + ' decisões pendentes' : link.label"
           (click)="menuOpen.set(false)"
         >
           <span class="nav-icon"><app-icon [name]="link.icon" /></span><span class="nav-text">{{ link.label }}</span>
+          @if (link.path === '/solicitacoes') { <app-decision-badge [count]="requests.count()" /> }
           <span class="nav-tooltip" aria-hidden="true">{{ link.label }}</span>
         </a>
       }

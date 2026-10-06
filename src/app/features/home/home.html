@@ -40,6 +40,13 @@
     </a>
   }
 </section>
+@if (requests.count() > 0) {
+  <a class="attention-card progress decisions-card" routerLink="/solicitacoes" [fragment]="requests.highlighted()">
+    <span class="attention-label"><app-icon name="check" />Decisões pendentes</span>
+    <strong>{{ requests.count() }}</strong>
+    <span class="card-cta">Abrir solicitações <app-icon name="arrow-right" /></span>
+  </a>
+}
 <section class="priorities" aria-labelledby="priorities-title">
   <div class="section-heading">
     <h2 id="priorities-title">Pendências prioritárias</h2>

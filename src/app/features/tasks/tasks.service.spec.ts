@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { AuthService } from '../../core/auth/auth.service';
 import { SUPABASE_CLIENT } from '../../core/supabase/supabase-client';
 import { TasksService } from './tasks.service';
+import { TaskChanges } from './task-changes';
 
 describe('TasksService', () => {
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
@@ -12,6 +13,7 @@ describe('TasksService', () => {
     select: vi.fn(),
     eq: vi.fn(),
     neq: vi.fn(),
+    in: vi.fn(),
     order: vi.fn(),
     maybeSingle: vi.fn(),
     returns,
@@ -39,6 +41,7 @@ describe('TasksService', () => {
     query.select.mockReset().mockReturnValue(query);
     query.eq.mockReset().mockReturnValue(query);
     query.neq.mockReset().mockReturnValue(query);
+    query.in.mockReset().mockReturnValue(query);
     query.order.mockReset().mockReturnValue(query);
     query.maybeSingle.mockReset();
     returns.mockReset().mockResolvedValue({ data: [task], error: null });
@@ -55,6 +58,62 @@ describe('TasksService', () => {
     expect(client.from).toHaveBeenCalledExactlyOnceWith('tasks');
     expect(query.eq).toHaveBeenCalledExactlyOnceWith('board_id', 'board-1');
     expect(query.order).toHaveBeenCalledExactlyOnceWith('created_at', { ascending: true });
+  });
+
+  it('invalidates the requests read model only after successful mutations', async () => {
+    const changes = TestBed.inject(TaskChanges);
+    const service = TestBed.inject(TasksService);
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    await service.assignmentCapabilities('task-1');
+    expect(changes.revision()).toBe(0);
+    await service.accept('task-1');
+    await service.refuseAssignment('task-1', 'Motivo');
+    await service.reassign('task-1', 'other');
+    await service.decidePostponement('task-1', 'request-1', true, '');
+    expect(changes.revision()).toBe(4);
+    client.rpc.mockResolvedValue({ data: null, error: { message: 'denied' } });
+    await expect(service.accept('task-1')).rejects.toThrow();
+    expect(changes.revision()).toBe(4);
+  });
+
+  it('routes assignment/deadline actions to bounded RPCs without caller identity or role', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    const service = TestBed.inject(TasksService);
+    await service.refuseAssignment('task-1', '  Motivo  ');
+    await service.reassign('task-1', 'new-assignee');
+    await service.requestPostponement('task-1', '2030-02-01T12:00:00Z', '  Motivo  ');
+    await service.decidePostponement('task-1', 'request-1', false, '  Motivo  ');
+    await service.decidePostponement('task-1', 'request-1', true, '');
+    await service.changeDueAt('task-1', '2030-03-01T12:00:00Z', '  Motivo  ');
+    expect(client.rpc.mock.calls).toEqual([
+      ['refuse_task_assignment', { p_task_id: 'task-1', p_justification: 'Motivo' }],
+      ['reassign_refused_task', { p_task_id: 'task-1', p_assignee_id: 'new-assignee' }],
+      ['request_task_postponement', { p_task_id: 'task-1', p_due_at: '2030-02-01T12:00:00Z', p_justification: 'Motivo' }],
+      ['decide_task_postponement', { p_task_id: 'task-1', p_request_id: 'request-1', p_approve: false, p_justification: 'Motivo' }],
+      ['decide_task_postponement', { p_task_id: 'task-1', p_request_id: 'request-1', p_approve: true, p_justification: null }],
+      ['change_task_due_at', { p_task_id: 'task-1', p_due_at: '2030-03-01T12:00:00Z', p_justification: 'Motivo' }],
+    ]);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('loads decision authority from PostgreSQL and requests under task-scoped RLS', async () => {
+    const permissions = { can_manage: true, can_change_due_at: false };
+    client.rpc.mockResolvedValue({ data: permissions, error: null });
+    expect(await TestBed.inject(TasksService).assignmentCapabilities('task-1')).toEqual(permissions);
+    expect(client.rpc).toHaveBeenCalledWith('task_assignment_capabilities', { p_task_id: 'task-1' });
+    returns.mockResolvedValue({ data: [], error: null });
+    await TestBed.inject(TasksService).listPostponements('task-1');
+    expect(client.from).toHaveBeenCalledWith('task_postponement_requests');
+    expect(query.eq).toHaveBeenCalledWith('task_id', 'task-1');
+  });
+
+  it('hides assignment RPC errors and rejects stale session responses', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: { message: 'secret' } });
+    await expect(TestBed.inject(TasksService).refuseAssignment('task-1', 'Motivo')).rejects.toThrow('Não foi possível executar a ação.');
+    client.rpc.mockImplementation(async () => {
+      session.set({ user: { id: 'another' } }); return { data: null, error: null };
+    });
+    await expect(TestBed.inject(TasksService).changeDueAt('task-1', '2030-01-01Z', 'Motivo')).rejects.toThrow();
   });
 
   it('loads only the bounded assignee RPC result', async () => {
@@ -96,7 +155,7 @@ describe('TasksService', () => {
     ).toEqual({ status: 'unavailable' });
   });
 
-  it('loads named history through the task-scoped RPC', async () => {
+  it('loads named history through the RPC and structured deadline details under event RLS', async () => {
     const events = [
       {
         id: 'event-1',
@@ -109,11 +168,19 @@ describe('TasksService', () => {
       },
     ];
     client.rpc.mockResolvedValue({ data: events, error: null });
-    expect(await TestBed.inject(TasksService).listHistory('task-1')).toEqual(events);
+    returns.mockResolvedValue({ data: [{ id: 'event-1', details: { previous_due_at: '2030-01-01Z' } }], error: null });
+    expect(await TestBed.inject(TasksService).listHistory('task-1')).toEqual([
+      { ...events[0], details: { previous_due_at: '2030-01-01Z' } },
+    ]);
     expect(client.rpc).toHaveBeenCalledExactlyOnceWith('list_task_history', {
       p_task_id: 'task-1',
     });
-    expect(client.from).not.toHaveBeenCalled();
+    expect(client.from).toHaveBeenCalledExactlyOnceWith('task_events');
+    expect(query.select).toHaveBeenLastCalledWith('id, details');
+    expect(query.eq).toHaveBeenLastCalledWith('task_id', 'task-1');
+    expect(query.in).toHaveBeenCalledExactlyOnceWith('event_type', [
+      'postponement_requested', 'postponement_approved', 'postponement_rejected', 'due_at_changed',
+    ]);
   });
 
   it('loads comments in stable chronological order', async () => {

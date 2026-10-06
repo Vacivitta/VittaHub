@@ -50,6 +50,8 @@ describe('TaskDetailPage', () => {
       provideRouter([{ path: 'pendencias/:id', component: TaskDetailPage }]),
       { provide: TasksService, useValue: {
         getById, listAssignees, listHistory, listComments, addComment,
+        assignmentCapabilities: vi.fn().mockResolvedValue({ can_manage: false, can_change_due_at: false }),
+        listPostponements: vi.fn().mockResolvedValue([]),
         accept, start, complete, resume, waitForThirdParty,
       } },
       { provide: AuthService, useValue: auth },
@@ -71,6 +73,28 @@ describe('TaskDetailPage', () => {
     expect(harness.routeNativeElement?.textContent).toContain('Carregando pendência');
     resolve({ status: 'unavailable' });
     await harness.fixture.whenStable();
+  });
+
+  it('refreshes a refused assignment as unassigned without keeping the acceptance action', async () => {
+    session.set({ user: { id: 'user-2' } });
+    const harness = await render();
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, assignee_id: null, awaiting_reassignment: true } });
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    await page.assignmentChanged('Atribuição recusada com sucesso.');
+    harness.detectChanges();
+    expect(page.action()).toBeNull();
+    expect(harness.routeNativeElement?.textContent).toContain('Sem responsável ativo');
+    expect(harness.routeNativeElement?.textContent).toContain('Aguardando reatribuição');
+  });
+
+  it('preserves refusal success feedback when the former assignee loses private visibility', async () => {
+    const harness = await render();
+    getById.mockResolvedValue({ status: 'unavailable' });
+    await (harness.routeDebugElement!.componentInstance as TaskDetailPage).assignmentChanged('Atribuição recusada com sucesso.');
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('Atribuição recusada com sucesso.');
+    expect(harness.routeNativeElement?.textContent).toContain('Pendência não encontrada ou sem acesso');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Detalhe real');
   });
 
   it('renders an accessible real task and only safely available related names', async () => {
@@ -323,6 +347,38 @@ describe('TaskDetailPage', () => {
       expect(entries[index].textContent).not.toContain('former-participant');
     });
     expect(entries[6].textContent).toContain('Autor indisponível');
+  });
+
+  it('formats structured postponement and deadline events in local Brazilian date/time', async () => {
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    const previous = '2026-09-30 09:00:00+00';
+    const requested = '2026-10-14 14:44:00+00';
+    const local = (value: string) => new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(new Date(value)).replace(', ', ' às ');
+    const format = (event_type: string, details: Record<string, unknown>, content = 'raw') =>
+      page.historyContent({
+        id: event_type, task_id: id, event_type, details, content, actor_id: 'user-1',
+        actor_display_name: 'Pessoa atual', is_system: true, created_at: '2026-10-14T15:00:00Z',
+      });
+
+    expect(format('postponement_requested', {
+      previous_due_at: previous, requested_due_at: requested, justification: 'aguardando resposta do fornecedor',
+    })).toBe(`Adiamento solicitado de ${local(previous)} para ${local(requested)}. Motivo: aguardando resposta do fornecedor.`);
+    expect(format('postponement_approved', {
+      previous_due_at: previous, new_due_at: requested,
+    }, 'Adiamento solicitado por Pessoa solicitante aprovado: prazo de raw para raw.'))
+      .toBe(`Adiamento solicitado por Pessoa solicitante aprovado: prazo de ${local(previous)} para ${local(requested)}.`);
+    expect(format('postponement_rejected', {
+      previous_due_at: previous, justification: 'Prazo inviável',
+    }, 'Adiamento solicitado por Pessoa solicitante recusado. Justificativa: raw'))
+      .toBe(`Adiamento solicitado por Pessoa solicitante recusado (prazo mantido em ${local(previous)}). Motivo: Prazo inviável.`);
+    expect(format('due_at_changed', {
+      previous_due_at: previous, new_due_at: requested, justification: 'Correção administrativa',
+    })).toBe(`Prazo alterado diretamente de ${local(previous)} para ${local(requested)}. Motivo: Correção administrativa.`);
+    expect(format('completed', { previous_due_at: previous }, 'Conclusão original')).toBe('Conclusão original');
+    expect(format('postponement_requested', {}, 'Conteúdo original')).toBe('Conteúdo original');
   });
   it('discards named history when the session changes while loading', async () => {
     let resolve!: (value: unknown[]) => void;

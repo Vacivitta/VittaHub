@@ -1,0 +1,31 @@
+:host {
+  display: block;
+}
+section {
+  margin-top: 1.5rem;
+}
+.requests-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+}
+.request-card {
+  padding: 1.2rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 5rem;
+}
+.request-card h3 {
+  margin-block: 0.8rem;
+}
+.request-card p {
+  margin-block: 0.5rem;
+}
+.justification {
+  white-space: pre-wrap;
+}
+.request-card.highlighted,
+.request-card:focus-visible {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 3px;
+}

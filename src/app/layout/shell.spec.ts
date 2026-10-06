@@ -3,17 +3,21 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { Shell } from './shell';
+import { RequestsService } from '../features/requests/requests.service';
 
 describe('Shell sidebar', () => {
   const key = 'vittahub.sidebarCollapsed';
   const canAccessAdministration = signal(true);
+  const count = signal(0);
   beforeEach(() => {
     canAccessAdministration.set(true);
+    count.set(0);
     localStorage.removeItem(key);
     TestBed.configureTestingModule({
       imports: [Shell],
       providers: [
         provideRouter([]),
+        { provide: RequestsService, useValue: { count, refresh: vi.fn() } },
         {
           provide: AuthService,
           useValue: {
@@ -44,7 +48,7 @@ describe('Shell sidebar', () => {
     expect(button.getAttribute('aria-label')).toBe('Expandir barra lateral');
     expect(localStorage.getItem(key)).toBe('true');
     const links = fixture.nativeElement.querySelectorAll('nav a') as NodeListOf<HTMLElement>;
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(6);
     for (const link of links) {
       expect(link.querySelector('.nav-tooltip')?.textContent?.trim()).toBe(
         link.getAttribute('aria-label'),
@@ -73,7 +77,7 @@ describe('Shell sidebar', () => {
     const fixture = TestBed.createComponent(Shell);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a[href="/administracao"]')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('nav a')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelectorAll('nav a')).toHaveLength(5);
     canAccessAdministration.set(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a[href="/administracao"]')).not.toBeNull();
@@ -90,5 +94,18 @@ describe('Shell sidebar', () => {
     expect(fixture.componentInstance.sidebarCollapsed()).toBe(false);
     expect(() => fixture.componentInstance.toggleSidebar()).not.toThrow();
     expect(fixture.componentInstance.sidebarCollapsed()).toBe(true);
+  });
+
+  it('places requests before administration and exposes the decision count accessibly', () => {
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    const requestLink = fixture.nativeElement.querySelector('a[href="/solicitacoes"]');
+    expect(requestLink.nextElementSibling.getAttribute('href')).toBe('/administracao');
+    expect(requestLink.querySelector('.decision-badge')).toBeNull();
+    count.set(3); fixture.detectChanges();
+    expect(requestLink.getAttribute('aria-label')).toContain('3 decisões pendentes');
+    expect(requestLink.querySelector('.decision-badge').textContent.trim()).toBe('3');
+    count.set(0); fixture.detectChanges();
+    expect(requestLink.querySelector('.decision-badge')).toBeNull();
   });
 });
