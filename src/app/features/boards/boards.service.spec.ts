@@ -245,6 +245,21 @@ describe('BoardsService', () => {
     });
   });
 
+  it('sets and clears column state using a bounded RPC without caller claims', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: null });
+    const service = TestBed.inject(BoardsService);
+    await service.setColumnState('column-1', 'concluido');
+    expect(client.rpc).toHaveBeenLastCalledWith('set_board_column_state', {
+      p_column_id: 'column-1', p_business_state: 'concluido',
+    });
+    await service.setColumnState('column-1', null);
+    expect(client.rpc).toHaveBeenLastCalledWith('set_board_column_state', {
+      p_column_id: 'column-1', p_business_state: null,
+    });
+    client.rpc.mockResolvedValue({ error: { message: 'denied' } });
+    await expect(service.setColumnState('column-1', 'a_fazer')).rejects.toThrow();
+  });
+
   it('uses controlled RPCs for board editing and safe deletion', async () => {
     client.rpc.mockResolvedValue({ data: null, error: null });
     const service = TestBed.inject(BoardsService);

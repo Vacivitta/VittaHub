@@ -18,6 +18,7 @@ describe('BoardPage', () => {
   const canManageColumns = vi.fn();
   const createColumn = vi.fn();
   const renameColumn = vi.fn();
+  const setColumnState = vi.fn();
   const updateBoard = vi.fn();
   const deleteColumn = vi.fn();
   const deleteBoard = vi.fn();
@@ -82,6 +83,7 @@ describe('BoardPage', () => {
     canManageStructure.mockReset().mockResolvedValue(false);
     createColumn.mockReset().mockResolvedValue('column-new');
     renameColumn.mockReset().mockResolvedValue(undefined);
+    setColumnState.mockReset().mockResolvedValue(undefined);
     updateBoard.mockReset().mockResolvedValue(undefined);
     deleteColumn.mockReset().mockResolvedValue(undefined);
     deleteBoard.mockReset().mockResolvedValue(undefined);
@@ -97,6 +99,7 @@ describe('BoardPage', () => {
             canManageColumns,
             createColumn,
             renameColumn,
+            setColumnState,
             updateBoard,
             deleteColumn,
             deleteBoard,
@@ -114,6 +117,50 @@ describe('BoardPage', () => {
     harness.detectChanges();
     return harness;
   }
+
+  it('loads and saves optional column bindings using the column capability without changing cards', async () => {
+    canManageColumns.mockResolvedValue(true);
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    const selects = harness.routeNativeElement!.querySelectorAll<HTMLSelectElement>('.column-state-field select');
+    expect(selects[0].value).toBe('');
+    expect(selects[1].value).toBe('fazendo');
+    expect([...selects[0].options].map((option) => option.value)).toEqual(['', 'a_fazer', 'fazendo', 'aguardando_terceiro', 'concluido']);
+    const before = structuredClone(page.tasks());
+    selects[0].value = 'concluido';
+    selects[0].dispatchEvent(new Event('change'));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(setColumnState).toHaveBeenCalledExactlyOnceWith('column-1', 'concluido');
+    expect(page.board()!.columns[0].business_state).toBe('concluido');
+    expect(harness.routeNativeElement!.textContent).toContain('Estado: Concluído');
+    expect(page.tasks()).toEqual(before);
+    expect(moveToColumn).not.toHaveBeenCalled();
+    selects[0].value = '';
+    selects[0].dispatchEvent(new Event('change'));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(setColumnState).toHaveBeenLastCalledWith('column-1', null);
+    expect(page.board()!.columns[0].business_state).toBeNull();
+  });
+
+  it('hides column bindings controls without column capability', async () => {
+    const harness = await render();
+    expect(harness.routeNativeElement!.querySelector('.column-state-field')).toBeNull();
+  });
+
+  it('restores the current binding and reports a save error', async () => {
+    canManageColumns.mockResolvedValue(true);
+    setColumnState.mockRejectedValue(new Error('denied'));
+    const harness = await render();
+    const select = harness.routeNativeElement!.querySelector<HTMLSelectElement>('.column-state-field select')!;
+    select.value = 'fazendo';
+    select.dispatchEvent(new Event('change'));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(select.value).toBe('');
+    expect(harness.routeNativeElement!.textContent).toContain('Não foi possível salvar o estado vinculado');
+  });
 
   it('lets a local member admin manage columns but not the board', async () => {
     profile.set({ id: 'user-1', is_active: true, role: 'membro' });
