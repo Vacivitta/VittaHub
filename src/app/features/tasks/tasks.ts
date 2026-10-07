@@ -33,6 +33,9 @@ import { Icon } from '../../shared/icon';
           >{{ filter.label }}</a
         >
       }
+      <a class="button secondary" routerLink="/minhas-pendencias"
+        [queryParams]="{ filtro: 'concluidas' }"
+        [attr.aria-current]="activeFilter() === 'concluidas' ? 'page' : null">Concluídas</a>
     </nav>
     @if (loading()) {
       <div class="panel empty" role="status">Carregando suas pendências…</div>
@@ -43,7 +46,7 @@ import { Icon } from '../../shared/icon';
         <button type="button" (click)="load()">Tentar novamente</button>
       </section>
     } @else if (filteredTasks().length) {
-      <p class="small muted" aria-live="polite">{{ filteredTasks().length }} pendências abertas</p>
+      <p class="small muted" aria-live="polite">{{ filteredTasks().length }} pendências {{ activeFilter() === 'concluidas' ? 'concluídas' : 'abertas' }}</p>
       <div class="tasks-grid">
         @for (task of filteredTasks(); track task.id) {
           <a
@@ -118,16 +121,19 @@ export class Tasks {
   readonly tasks = signal<TaskWithContext[]>([]);
   readonly loading = signal(true);
   readonly error = signal('');
-  readonly labels = BUSINESS_STATE_LABELS;
+  readonly labels = { ...BUSINESS_STATE_LABELS, concluido: 'Concluída' };
   readonly filters = ATTENTION_FILTERS;
   readonly now = minuteClock();
   private readonly params = toSignal(inject(ActivatedRoute).queryParamMap);
   readonly activeFilter = computed(() => {
     const value = this.params()?.get('filtro');
+    if (value === 'concluidas') return 'concluidas';
     return this.filters.find((filter) => filter.id === value)?.id ?? null;
   });
   readonly filteredTasks = computed(() =>
-    this.tasks().filter((task) => matchesAttention(task, this.activeFilter(), this.now())),
+    this.tasks().filter((task) => this.activeFilter() === 'concluidas'
+      ? task.business_state === 'concluido'
+      : matchesAttention(task, this.activeFilter(), this.now())),
   );
 
   constructor() {
@@ -138,7 +144,7 @@ export class Tasks {
     this.loading.set(true);
     this.error.set('');
     try {
-      this.tasks.set(await this.service.listMine());
+      this.tasks.set(await this.service.listMine(true));
     } catch {
       this.error.set('Tente novamente em instantes.');
     } finally {

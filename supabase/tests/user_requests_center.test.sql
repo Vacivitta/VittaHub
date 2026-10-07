@@ -40,8 +40,21 @@ select is((select count(*) from public.list_my_requests() where area='waiting'),
 select ok(not exists(select 1 from public.list_my_requests() where task->>'id'='24b00000-0000-4000-8000-000000000305'),'local administration cannot cross boards');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','24b00000-0000-4000-8000-000000000004',true);
-select is((select count(*) from public.list_my_requests() where area='decide'),5::bigint,'global administration across boards without membership');
-select is((select count(*) from public.list_my_requests() where area='waiting'),0::bigint,'global admin does not await others requests');
+-- Global admins also see pre-existing local data, including pending postponements
+-- on completed tasks. Assert the exact fixture items, not a database-wide count.
+select results_eq(
+  $$select item_key from public.list_my_requests() where area='decide'
+    and task->>'board_id' in ('24b00000-0000-4000-8000-000000000101','24b00000-0000-4000-8000-000000000102')
+    order by item_key$$,
+  $$values ('postponement-24b00000-0000-4000-8000-000000000403'),
+    ('postponement-24b00000-0000-4000-8000-000000000404'),
+    ('postponement-24b00000-0000-4000-8000-000000000405'),
+    ('postponement-24b00000-0000-4000-8000-000000000406'),
+    ('reassignment-24b00000-0000-4000-8000-000000000302')$$,
+  'global administration across boards without membership');
+select is((select count(*) from public.list_my_requests() where area='waiting'
+  and task->>'board_id' in ('24b00000-0000-4000-8000-000000000101','24b00000-0000-4000-8000-000000000102')),
+  0::bigint,'global admin does not await others requests');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','24b00000-0000-4000-8000-000000000005',true);
 select is((select count(*) from public.list_my_requests() ),0::bigint,'ordinary manager receives no decision authority');

@@ -60,6 +60,42 @@ describe('TasksService', () => {
     expect(query.order).toHaveBeenCalledExactlyOnceWith('created_at', { ascending: true });
   });
 
+  it('checks editing authority and sends only the three editable fields without caller claims', async () => {
+    const service = TestBed.inject(TasksService);
+    client.rpc.mockResolvedValue({ data: true, error: null });
+    expect(await service.canEdit('task-1')).toBe(true);
+    expect(await service.edit('task-1', '  Título  ', '  ', false)).toBe(true);
+    expect(client.rpc.mock.calls).toEqual([
+      ['can_edit_task', { p_task_id: 'task-1' }],
+      ['edit_task', { p_task_id: 'task-1', p_title: 'Título', p_description: null, p_is_private: false }],
+    ]);
+    client.rpc.mockResolvedValue({ data: false, error: null });
+    expect(await service.edit('task-1', 'Título', '', false)).toBe(false);
+    client.rpc.mockResolvedValue({ data: null, error: { message: 'denied' } });
+    await expect(service.edit('task-1', 'Título', '', false)).rejects.toThrow();
+    await expect(service.canEdit('task-1')).rejects.toThrow();
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
+  it('checks reopening permission and sends only task and justification to its RPC', async () => {
+    const service = TestBed.inject(TasksService);
+    const changes = TestBed.inject(TaskChanges);
+    client.rpc.mockResolvedValue({ data: true, error: null });
+    expect(await service.canReopen('task-1')).toBe(true);
+    expect(changes.revision()).toBe(0);
+    await service.reopen('task-1', '  Revisar  ');
+    expect(client.rpc.mock.calls).toEqual([
+      ['can_reopen_task', { p_task_id: 'task-1' }],
+      ['reopen_task', { p_task_id: 'task-1', p_justification: 'Revisar' }],
+    ]);
+    expect(changes.revision()).toBe(1);
+    client.rpc.mockResolvedValue({ data: null, error: { message: 'denied' } });
+    await expect(service.reopen('task-1', 'Revisar')).rejects.toThrow();
+    await expect(service.canReopen('task-1')).rejects.toThrow();
+    expect(changes.revision()).toBe(1);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
   it('invalidates the requests read model only after successful mutations', async () => {
     const changes = TestBed.inject(TaskChanges);
     const service = TestBed.inject(TasksService);
@@ -137,6 +173,14 @@ describe('TasksService', () => {
       ['due_at', { ascending: true }],
       ['id', { ascending: true }],
     ]);
+  });
+
+  it('includes completed tasks only when requested while retaining the assignee restriction', async () => {
+    const completed = { ...task, assignee_id: 'user-1', business_state: 'concluido' };
+    returns.mockResolvedValue({ data: [completed], error: null });
+    expect(await TestBed.inject(TasksService).listMine(true)).toEqual([completed]);
+    expect(query.eq).toHaveBeenCalledExactlyOnceWith('assignee_id', 'user-1');
+    expect(query.neq).not.toHaveBeenCalled();
   });
 
   it('loads one visible task by ID and keeps an absent task indistinguishable', async () => {

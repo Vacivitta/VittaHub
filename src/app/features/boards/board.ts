@@ -101,6 +101,10 @@ import { BoardsService } from './boards.service';
         <div class="board-actions">
           <span class="badge"><app-icon name="boards" /> Visualização Kanban</span>
           <div class="filter-tabs" aria-label="Filtrar pendências">
+            <button type="button" [class.active]="filter() === 'all'"
+              [attr.aria-pressed]="filter() === 'all'" (click)="filter.set('all')">
+              Todas
+            </button>
             <button
               type="button"
               [class.active]="filter() === 'active'"
@@ -564,8 +568,8 @@ export class BoardPage {
   readonly renameColumnName = signal('');
   readonly columnBusy = signal(false);
   readonly movingTaskId = signal<string | null>(null);
-  readonly filter = signal<'active' | 'completed'>('active');
-  readonly labels = BUSINESS_STATE_LABELS;
+  readonly filter = signal<'all' | 'active' | 'completed'>('all');
+  readonly labels = { ...BUSINESS_STATE_LABELS, concluido: 'Concluída' };
   readonly form = new FormGroup({
     title: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     description: new FormControl('', { nonNullable: true }),
@@ -642,9 +646,9 @@ export class BoardPage {
     return this.tasks().filter(
       (task) =>
         task.column_id === columnId &&
-        (this.filter() === 'completed'
+        (this.filter() === 'all' || (this.filter() === 'completed'
           ? task.business_state === 'concluido'
-          : task.business_state !== 'concluido'),
+          : task.business_state !== 'concluido')),
     );
   }
   assigneeName(id: string | null): string {

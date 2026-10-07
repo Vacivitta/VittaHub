@@ -495,16 +495,22 @@ describe('BoardPage', () => {
     expect(page.managementError()).toContain('voltou para a coluna anterior');
   });
 
-  it('keeps the active/completed filter local to visibility', async () => {
+  it('shows completed tasks in their original column by default with a detail link and optional filters', async () => {
     list.mockResolvedValue([
       ...tasks,
       { ...tasks[0], id: 'task-3', title: 'Concluída', business_state: 'concluido' },
     ]);
     const harness = await render();
     const page = harness.routeDebugElement!.componentInstance as BoardPage;
+    expect(page.tasksForColumn('column-1').map((task) => task.id)).toEqual(['task-1', 'task-3']);
+    const completed = harness.routeNativeElement!.querySelector('a[href="/pendencias/task-3"]');
+    expect(completed?.querySelector('[data-state="concluido"]')?.textContent).toContain('Concluída');
+    expect(page.tasksForColumn('column-2').some((task) => task.id === 'task-3')).toBe(false);
+    page.filter.set('active');
     expect(page.tasksForColumn('column-1').map((task) => task.id)).toEqual(['task-1']);
     page.filter.set('completed');
     expect(page.tasksForColumn('column-1').map((task) => task.id)).toEqual(['task-3']);
+    expect(moveToColumn).not.toHaveBeenCalled();
   });
 
   it('allows an unrelated active participant to move shared tasks but not private tasks', async () => {

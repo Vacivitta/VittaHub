@@ -9,9 +9,11 @@ import { BoardAssignee, TaskComment, TaskEvent, TaskResult } from './task-detail
 import { TasksService } from './tasks.service';
 import { Icon } from '../../shared/icon';
 import { TaskAssignmentActions } from './task-assignment-actions';
+import { TaskReopening } from './task-reopening';
+import { TaskEditing } from './task-editing';
 
 @Component({
-  imports: [RouterLink, PageHeading, DatePipe, Icon, TaskAssignmentActions],
+  imports: [RouterLink, PageHeading, DatePipe, Icon, TaskAssignmentActions, TaskReopening, TaskEditing],
   template: `
     <a class="back-link" routerLink="/minhas-pendencias"
       ><app-icon name="arrow-left" /> Minhas pendências</a
@@ -150,6 +152,8 @@ import { TaskAssignmentActions } from './task-assignment-actions';
               }
             </div>
             <app-task-assignment-actions [task]="current" (changed)="assignmentChanged($event)" />
+            <app-task-reopening [task]="current" (changed)="assignmentChanged($event)" />
+            <app-task-editing [task]="current" (changed)="assignmentChanged($event)" />
           </section>
         </div>
         <aside class="panel task-history-panel" aria-label="Histórico da pendência">

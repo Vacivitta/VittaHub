@@ -137,6 +137,25 @@ describe('Tasks', () => {
     );
   });
 
+  it('keeps completed tasks separate and accessible through the completed filter', async () => {
+    listMine.mockResolvedValue([openTask, { ...awaitingTask, business_state: 'concluido' }]);
+    const harness = await render();
+    expect(listMine).toHaveBeenCalledExactlyOnceWith(true);
+    expect(harness.routeNativeElement!.querySelectorAll('.task-card')).toHaveLength(1);
+    expect(harness.routeNativeElement!.querySelector('.task-card')!.textContent).toContain('Pendência aberta');
+    expect(harness.routeNativeElement!.querySelector('a[href="/minhas-pendencias?filtro=concluidas"]')).not.toBeNull();
+    await harness.navigateByUrl('/minhas-pendencias?filtro=concluidas');
+    harness.detectChanges();
+    const cards = harness.routeNativeElement!.querySelectorAll('.task-card');
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain('Concluída');
+    expect(cards[0].querySelector('.overdue')).toBeNull();
+    expect(harness.routeNativeElement!.querySelector('.task-card-link')!.getAttribute('href'))
+      .toBe('/pendencias/' + awaitingTask.id);
+    expect(harness.routeNativeElement!.textContent).toContain('1 pendências concluídas');
+    expect(listMine).toHaveBeenCalledOnce();
+  });
+
   it('shows the real empty state', async () => {
     listMine.mockResolvedValue([]);
     const harness = await render();

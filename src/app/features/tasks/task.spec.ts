@@ -17,6 +17,10 @@ describe('TaskDetailPage', () => {
   const accept = vi.fn();
   const start = vi.fn();
   const complete = vi.fn();
+  const canReopen = vi.fn();
+  const reopen = vi.fn();
+  const canEdit = vi.fn();
+  const edit = vi.fn();
   const resume = vi.fn();
   const waitForThirdParty = vi.fn();
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
@@ -31,6 +35,16 @@ describe('TaskDetailPage', () => {
   };
 
   beforeEach(() => {
+    canEdit.mockReset().mockResolvedValue(false);
+    edit.mockReset().mockResolvedValue(true);
+    canReopen.mockReset().mockResolvedValue(false);
+    reopen.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+      configurable: true, value: function (this: HTMLDialogElement) { this.open = true; },
+    });
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+      configurable: true, value: function (this: HTMLDialogElement) { this.open = false; },
+    });
     profile.set({ id: 'user-1', display_name: 'Pessoa Atual' });
     session.set({ user: { id: 'user-1' } });
     getById.mockReset().mockResolvedValue({ status: 'loaded', task });
@@ -52,7 +66,7 @@ describe('TaskDetailPage', () => {
         getById, listAssignees, listHistory, listComments, addComment,
         assignmentCapabilities: vi.fn().mockResolvedValue({ can_manage: false, can_change_due_at: false }),
         listPostponements: vi.fn().mockResolvedValue([]),
-        accept, start, complete, resume, waitForThirdParty,
+        accept, start, complete, resume, waitForThirdParty, canReopen, reopen, canEdit, edit,
       } },
       { provide: AuthService, useValue: auth },
     ] });
@@ -64,6 +78,156 @@ describe('TaskDetailPage', () => {
     harness.detectChanges();
     return harness;
   }
+
+  it('edits only title description and privacy and refreshes detail and history', async () => {
+    session.set({ user: { id: task.created_by } });
+    canEdit.mockResolvedValue(true);
+    const harness = await render();
+    const root = harness.routeNativeElement!;
+    const editor = root.querySelector('app-task-editing')!;
+    (editor.querySelector('button') as HTMLButtonElement).click();
+    harness.detectChanges();
+    const modal = editor.querySelector('dialog')!;
+    expect(modal.open).toBe(true);
+    expect(modal.querySelectorAll('input')).toHaveLength(1);
+    const input = modal.querySelector('input')!;
+    expect(input.value).toBe(task.title);
+    input.value = '   ';
+    input.dispatchEvent(new Event('input'));
+    modal.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(edit).not.toHaveBeenCalled();
+    input.value = 'Título atualizado';
+    input.dispatchEvent(new Event('input'));
+    const description = modal.querySelector('textarea')!;
+    description.value = 'Descrição atualizada';
+    description.dispatchEvent(new Event('input'));
+    const privacy = modal.querySelector('select')!;
+    privacy.value = 'shared';
+    privacy.dispatchEvent(new Event('change'));
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, title: input.value, description: description.value, is_private: false } });
+    listHistory.mockResolvedValue([{ id: 'edited', content: 'Campos alterados: título, descrição, privacidade.', actor_display_name: 'Pessoa Atual', created_at: '2026-10-07T12:00:00Z' }]);
+    modal.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(edit).toHaveBeenCalledExactlyOnceWith(id, 'Título atualizado', 'Descrição atualizada', false);
+    expect(modal.open).toBe(false);
+    expect(root.textContent).toContain('Título atualizado');
+    expect(root.textContent).toContain('Descrição atualizada');
+    expect(root.textContent).toContain('Compartilhada');
+    expect(root.textContent).toContain('Campos alterados: título, descrição, privacidade.');
+    expect(root.textContent).toContain('Pendência editada com sucesso.');
+  });
+
+  it('recovers a failed capability lookup and displays editing for the creator after the async response', async () => {
+    session.set({ user: { id: task.created_by } });
+    canEdit.mockRejectedValueOnce(new Error('network failure'));
+    const harness = await render();
+    const editor = harness.routeNativeElement!.querySelector('app-task-editing')!;
+    expect(editor.querySelector('[role=alert]')?.textContent).toContain('Não foi possível verificar');
+    let resolve!: (allowed: boolean) => void;
+    canEdit.mockImplementation(() => new Promise<boolean>((done) => { resolve = done; }));
+    (editor.querySelector('button') as HTMLButtonElement).click();
+    harness.detectChanges();
+    expect(editor.querySelector('[role=status]')?.textContent).toContain('Verificando permissão');
+    expect([...editor.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Editar pendência')).toBe(false);
+    resolve(true);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(editor.querySelector('[role=alert]')).toBeNull();
+    const button = editor.querySelector('button') as HTMLButtonElement;
+    expect(button.textContent).toContain('Editar pendência');
+    button.click();
+    harness.detectChanges();
+    expect(editor.querySelector('dialog')!.open).toBe(true);
+    expect(editor.querySelector('input')!.value).toBe(task.title);
+  });
+
+  it('hides editing when permission is denied or the task is completed', async () => {
+    const harness = await render();
+    expect(harness.routeNativeElement!.querySelector('app-task-editing > button')).toBeNull();
+    canEdit.mockClear().mockResolvedValue(true);
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.result.set({ status: 'loaded', task: { ...task, business_state: 'concluido' } });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('app-task-editing > button')).toBeNull();
+    expect(canEdit).not.toHaveBeenCalled();
+  });
+
+  it('keeps the editing form on failure and reports a no-op without claiming an edit', async () => {
+    canEdit.mockResolvedValue(true);
+    edit.mockRejectedValueOnce(new Error('denied')).mockResolvedValue(false);
+    const harness = await render();
+    const editor = harness.routeNativeElement!.querySelector('app-task-editing')!;
+    (editor.querySelector('button') as HTMLButtonElement).click();
+    const form = editor.querySelector('form')!;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(editor.querySelector('dialog')!.open).toBe(true);
+    expect(editor.querySelector('[role=alert]')!.textContent).toContain('Não foi possível editar');
+    expect(getById).toHaveBeenCalledTimes(1);
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.textContent).toContain('Nenhuma alteração para salvar.');
+  });
+
+  it('reopens through a required-reason modal and refreshes state and history', async () => {
+    canReopen.mockResolvedValue(true);
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: 'concluido', completed_at: '2026-10-01T12:00:00Z' } });
+    const harness = await render();
+    const root = harness.routeNativeElement!;
+    const component = root.querySelector('app-task-reopening')!;
+    (component.querySelector('button') as HTMLButtonElement).click();
+    harness.detectChanges();
+    const modal = component.querySelector('dialog')!;
+    expect(modal.open).toBe(true);
+    expect((modal.querySelector('[type=submit]') as HTMLButtonElement).disabled).toBe(true);
+    const input = modal.querySelector('textarea')!;
+    input.value = '   ';
+    input.dispatchEvent(new Event('input'));
+    modal.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(reopen).not.toHaveBeenCalled();
+    input.value = '  Revisar entrega  ';
+    input.dispatchEvent(new Event('input'));
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: 'a_fazer', completed_at: null } });
+    listHistory.mockResolvedValue([{ id: 'reopened', event_type: 'reopened', content: 'Pendência reaberta. Justificativa: Revisar entrega', actor_display_name: 'Pessoa Atual', created_at: '2026-10-07T12:00:00Z' }]);
+    modal.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(reopen).toHaveBeenCalledExactlyOnceWith(id, 'Revisar entrega');
+    expect(modal.open).toBe(false);
+    expect(root.textContent).toContain('Pendência reaberta com sucesso.');
+    expect(root.textContent).toContain('Revisar entrega');
+    expect(root.textContent).not.toContain('Concluída em');
+  });
+
+  it('hides reopening when the database denies permission', async () => {
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: 'concluido' } });
+    const harness = await render();
+    expect(harness.routeNativeElement!.querySelector('app-task-reopening > button')).toBeNull();
+    expect(canReopen).toHaveBeenCalledWith(id);
+  });
+
+  it('keeps the justification and shows an error when reopening fails', async () => {
+    canReopen.mockResolvedValue(true);
+    reopen.mockRejectedValue(new Error('denied'));
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, business_state: 'concluido' } });
+    const harness = await render();
+    const root = harness.routeNativeElement!.querySelector('app-task-reopening')!;
+    (root.querySelector('button') as HTMLButtonElement).click();
+    const input = root.querySelector('textarea')!;
+    input.value = 'Revisar';
+    input.dispatchEvent(new Event('input'));
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(root.querySelector('[role=alert]')!.textContent).toContain('Não foi possível reabrir');
+    expect(root.querySelector('dialog')!.open).toBe(true);
+    expect(input.value).toBe('Revisar');
+    expect(getById).toHaveBeenCalledTimes(1);
+  });
 
   it('shows loading while the RLS query is pending', async () => {
     let resolve!: (result: TaskResult) => void;

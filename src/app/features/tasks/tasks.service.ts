@@ -53,14 +53,15 @@ export class TasksService {
     }
   }
 
-  async listMine(): Promise<TaskWithContext[]> {
+  async listMine(includeCompleted = false): Promise<TaskWithContext[]> {
     const userId = await this.authenticatedUser();
     try {
-      const { data, error } = await this.client
+      let query = this.client
         .from('tasks')
         .select(TASK_WITH_CONTEXT_SELECT)
-        .eq('assignee_id', userId)
-        .neq('business_state', 'concluido')
+        .eq('assignee_id', userId);
+      if (!includeCompleted) query = query.neq('business_state', 'concluido');
+      const { data, error } = await query
         .order('due_at', { ascending: true })
         .order('id', { ascending: true })
         .returns<TaskWithContext[]>();
@@ -161,6 +162,37 @@ export class TasksService {
 
   complete(taskId: string): Promise<void> {
     return this.transition('complete_task', taskId);
+  }
+
+  async canReopen(taskId: string): Promise<boolean> {
+    const userId = await this.authenticatedUser();
+    const { data, error } = await this.client.rpc('can_reopen_task', { p_task_id: taskId });
+    if (error || this.auth.session()?.user.id !== userId) throw new Error();
+    return data === true;
+  }
+
+  async canEdit(taskId: string): Promise<boolean> {
+    const userId = await this.authenticatedUser();
+    const { data, error } = await this.client.rpc('can_edit_task', { p_task_id: taskId });
+    if (error || this.auth.session()?.user.id !== userId) throw new Error();
+    return data === true;
+  }
+
+  async edit(taskId: string, title: string, description: string, isPrivate: boolean): Promise<boolean> {
+    const result = await this.assignmentRpc('edit_task', {
+      p_task_id: taskId,
+      p_title: title.trim(),
+      p_description: description.trim() || null,
+      p_is_private: isPrivate,
+    });
+    return result === true;
+  }
+
+  reopen(taskId: string, justification: string): Promise<unknown> {
+    return this.assignmentRpc('reopen_task', {
+      p_task_id: taskId,
+      p_justification: justification.trim(),
+    });
   }
 
   resume(taskId: string): Promise<void> {
