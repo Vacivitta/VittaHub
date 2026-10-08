@@ -115,8 +115,8 @@ describe('BoardsService', () => {
       created_at: '2026-09-29T13:42:00Z',
       department: { name: 'Departamento de Testes' },
       columns: [
-        { id: 'column-1', title: 'Entrada', position: 0, business_state: null },
-        { id: 'column-2', title: 'Execução', position: 1, business_state: 'fazendo' },
+        { id: 'column-1', title: 'Entrada', position: 0 },
+        { id: 'column-2', title: 'Execução', position: 1 },
       ],
     };
 
@@ -128,7 +128,7 @@ describe('BoardsService', () => {
       expect(await TestBed.inject(BoardsService).getById(id)).toEqual({ status: 'loaded', board });
       expect(client.from).toHaveBeenCalledExactlyOnceWith('boards');
       expect(query.select).toHaveBeenCalledExactlyOnceWith(
-        'id, title, description, created_at, department:departments(name), columns:board_columns(id, title, position, business_state)',
+        'id, title, description, created_at, department:departments(name), columns:board_columns(id, title, position)',
       );
       expect(query.eq).toHaveBeenCalledExactlyOnceWith('id', id);
       expect(query.order).toHaveBeenCalledExactlyOnceWith('position', {
@@ -243,21 +243,6 @@ describe('BoardsService', () => {
       p_column_id: 'column-1',
       p_name: 'Nova',
     });
-  });
-
-  it('sets and clears column state using a bounded RPC without caller claims', async () => {
-    client.rpc.mockResolvedValue({ data: null, error: null });
-    const service = TestBed.inject(BoardsService);
-    await service.setColumnState('column-1', 'concluido');
-    expect(client.rpc).toHaveBeenLastCalledWith('set_board_column_state', {
-      p_column_id: 'column-1', p_business_state: 'concluido',
-    });
-    await service.setColumnState('column-1', null);
-    expect(client.rpc).toHaveBeenLastCalledWith('set_board_column_state', {
-      p_column_id: 'column-1', p_business_state: null,
-    });
-    client.rpc.mockResolvedValue({ error: { message: 'denied' } });
-    await expect(service.setColumnState('column-1', 'a_fazer')).rejects.toThrow();
   });
 
   it('uses controlled RPCs for board editing and safe deletion', async () => {

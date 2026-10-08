@@ -51,7 +51,7 @@ import { Icon } from '../../shared/icon';
         @for (task of filteredTasks(); track task.id) {
           <a
             class="task-card-link"
-            [routerLink]="['/pendencias', task.id]"
+            [routerLink]="['/pendencias', task.id]" [state]="{ taskOrigin: 'tasks' }"
             [attr.aria-label]="'Abrir pendência ' + task.title"
           >
             <article class="task-card">

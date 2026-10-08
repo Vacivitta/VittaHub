@@ -1,10 +1,11 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthService } from '../../core/auth/auth.service';
 import { PageHeading } from '../../shared/page-heading';
-import { BUSINESS_STATE_LABELS } from '../boards/board-detail';
+import { BoardDetail, BUSINESS_STATE_LABELS } from '../boards/board-detail';
+import { BoardsService } from '../boards/boards.service';
 import { BoardAssignee, TaskComment, TaskEvent, TaskResult } from './task-detail';
 import { TasksService } from './tasks.service';
 import { Icon } from '../../shared/icon';
@@ -13,12 +14,56 @@ import { TaskReopening } from './task-reopening';
 import { TaskEditing } from './task-editing';
 
 @Component({
+  styles: `
+    .detail-tools { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+    .detail-tools app-task-editing { margin-top: 0; }
+    .task-detail-layout { align-items: start; grid-template-areas: 'detail history' 'comments .'; }
+    .task-detail-main { display: contents; }
+    .task-detail-panel { grid-area: detail; min-width: 0; }
+    .task-comments-panel { grid-area: comments; margin-top: 0; }
+    .task-history-slot { grid-area: history; position: relative; align-self: stretch; min-width: 0; }
+    .task-history-panel { position: absolute; top: auto; bottom: 0; width: 100%; max-height: 100%;
+      box-sizing: border-box; overflow: auto; min-width: 0; }
+    @media (max-width: 900px) {
+      .task-detail-layout { grid-template-areas: 'detail' 'comments' 'history'; }
+      .task-history-panel { position: static; max-height: none; overflow: visible; }
+    }
+    .history-toggle { margin-top: .25rem; }
+    .move-dialog { margin: auto; width: min(32rem, calc(100vw - 2rem)); box-sizing: border-box;
+      max-height: 85dvh; overflow: auto; border: 1px solid var(--border); border-radius: 1rem;
+      padding: 1.5rem; background: var(--surface); color: var(--text-primary); }
+    .move-dialog::backdrop { background: #0f172a88; }
+    .move-dialog header, .move-dialog footer { display: flex; align-items: center; gap: .75rem; }
+    .move-dialog header { justify-content: space-between; }
+    .move-dialog h2 { margin: 0; }
+    .move-dialog .icon-button { display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 42px; width: 42px; height: 42px; padding: 0; border-radius: 50%;
+      background: var(--brand-primary-soft); color: var(--brand-primary); }
+    .move-dialog fieldset { display: grid; gap: .75rem; border: 0; padding: 0; margin: 1rem 0; min-width: 0; }
+    .move-dialog legend { margin-bottom: .75rem; }
+    .move-option { display: flex; align-items: center; gap: .75rem; padding: .75rem;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; overflow-wrap: anywhere; }
+    .move-option.selected { border-color: var(--brand-primary); background: var(--brand-primary-soft); }
+    .move-option:focus-within { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+    .move-option input { appearance: none; width: 1.1rem; height: 1.1rem; min-height: 0; min-width: 0;
+      box-sizing: border-box; aspect-ratio: 1; align-self: center; flex: 0 0 1.1rem;
+      padding: 0; margin: 0; border: 2px solid var(--brand-primary); border-radius: 50%;
+      background: var(--surface); box-shadow: none; cursor: pointer; }
+    .move-option input:checked { background: var(--brand-primary);
+      box-shadow: inset 0 0 0 3px var(--surface); }
+    .move-option input:focus-visible { outline: none; }
+    .move-dialog footer { flex-wrap: wrap; justify-content: flex-end; }
+    .move-dialog footer button { white-space: normal; overflow-wrap: anywhere; }
+    @media (max-width: 480px) { .move-dialog { padding: 1rem; } .move-dialog footer button { width: 100%; } }
+  `,
   imports: [RouterLink, PageHeading, DatePipe, Icon, TaskAssignmentActions, TaskReopening, TaskEditing],
   template: `
-    <a class="back-link" routerLink="/minhas-pendencias"
-      ><app-icon name="arrow-left" /> Minhas pendências</a
+    <a class="back-link" [routerLink]="backTarget().commands"
+      ><app-icon name="arrow-left" /> {{ backTarget().label }}</a
     >
     @if (assignmentFeedback()) { <p role="status">{{ assignmentFeedback() }}</p> }
+    @if (moveFeedback()) { <p role="status">{{ moveFeedback() }}</p> }
+    @if (moveError() && !moveModalOpen()) { <p class="form-error" role="alert">{{ moveError() }}</p> }
     @if (result().status === 'loading') {
       <div class="panel empty" role="status">Carregando pendência…</div>
     } @else if (task(); as current) {
@@ -28,7 +73,7 @@ import { TaskEditing } from './task-editing';
         eyebrow="Detalhe da pendência"
       />
       <div class="task-detail-layout">
-        <div>
+        <div class="task-detail-main">
           <section class="panel task-detail-panel">
             <div class="task-detail-state">
               <span class="badge" [attr.data-state]="current.business_state">{{
@@ -145,67 +190,121 @@ import { TaskEditing } from './task-editing';
               @if (actionError()) {
                 <p class="form-error" role="alert">{{ actionError() }}</p>
               }
-              @if (current.board) {
-                <a class="button tertiary" [routerLink]="['/quadros', current.board.id]"
-                  >Abrir quadro</a
-                >
-              }
             </div>
             <app-task-assignment-actions [task]="current" (changed)="assignmentChanged($event)" />
             <app-task-reopening [task]="current" (changed)="assignmentChanged($event)" />
-            <app-task-editing [task]="current" (changed)="assignmentChanged($event)" />
+            <div class="detail-tools">
+              @if (canMove() && moveDestinations().length) {
+                <button #moveTrigger class="button primary" type="button" (click)="openMoveModal()">Mover pendência</button>
+              }
+              <app-task-editing [task]="current" (changed)="assignmentChanged($event)" />
+              @if (current.board) {
+                <a class="button tertiary" [routerLink]="['/quadros', current.board.id]">Abrir quadro</a>
+              }
+            </div>
+            <dialog #moveModal class="move-dialog" aria-labelledby="move-title" aria-describedby="move-current"
+              [attr.aria-busy]="moving()" (cancel)="cancelMoveModal($event)" (close)="moveModalClosed()">
+              <form (submit)="$event.preventDefault(); moveTask()">
+                <header>
+                  <h2 id="move-title" #moveTitle tabindex="-1">Mover pendência</h2>
+                  <button class="icon-button" type="button" aria-label="Fechar movimentação" (click)="closeMoveModal()" [disabled]="moving()"><app-icon name="close" /></button>
+                </header>
+                <p id="move-current">Coluna atual: <strong>{{ current.column?.title || 'Indisponível' }}</strong></p>
+                <fieldset [disabled]="moving() || !canMove()">
+                  <legend>Selecione a coluna de destino</legend>
+                  @for (column of moveDestinations(); track column.id) {
+                    <label class="move-option" [class.selected]="moveColumnId() === column.id">
+                      <input type="radio" name="move-destination" [value]="column.id" [checked]="moveColumnId() === column.id"
+                        (change)="moveColumnId.set(column.id)" />
+                      <span>{{ column.title }}</span>
+                    </label>
+                  }
+                </fieldset>
+                @if (moveError()) { <p class="form-error" role="alert">{{ moveError() }}</p> }
+                @if (moving()) { <p role="status">Movendo pendência…</p> }
+                <footer>
+                  <button class="button tertiary" type="button" (click)="closeMoveModal()" [disabled]="moving()">Cancelar</button>
+                  <button class="button primary" type="submit" [disabled]="moving() || !canMove() || !moveDestination()">
+                    @if (moving()) { Movendo… }
+                    @else if (moveDestination(); as destination) { Mover pendência para “{{ destination.title }}” }
+                    @else { Mover pendência }
+                  </button>
+                </footer>
+              </form>
+            </dialog>
           </section>
+        <section class="panel task-comments-panel" aria-label="Comentários da pendência">
+          <h2>Comentários</h2>
+          @for (comment of comments(); track comment.id) {
+            <article class="comment-entry">
+              <div class="row">
+                <strong>{{ commentAuthorName(comment.author_id) || 'Autor indisponível' }}</strong>
+                <span class="small muted">{{ comment.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
+              </div>
+              <p>{{ comment.content }}</p>
+            </article>
+          } @empty {
+            <p class="small muted">{{ commentsError() || 'Nenhum comentário registrado.' }}</p>
+          }
+          <div class="comment-form">
+            <label
+              >Adicionar comentário
+              <textarea
+                rows="3"
+                [value]="commentText()"
+                (input)="commentText.set($any($event.target).value)"
+              ></textarea>
+            </label>
+            @if (commentError()) {
+              <p class="form-error" role="alert">{{ commentError() }}</p>
+            }
+            <button
+              class="button primary"
+              type="button"
+              (click)="submitComment()"
+              [disabled]="commenting()"
+            >
+              {{ commenting() ? 'Enviando…' : 'Comentar' }}
+            </button>
+          </div>
+        </section>
         </div>
+        <div class="task-history-slot">
         <aside class="panel task-history-panel" aria-label="Histórico da pendência">
           <h2>Histórico</h2>
-          @for (event of history(); track event.id) {
+          @for (event of visibleHistory(); track event.id) {
             <div class="history-entry">
               <strong>{{ historyContent(event) }}</strong>
-              <span class="small">{{
-                event.actor_display_name?.trim() || 'Autor indisponível'
-              }}</span>
+              <span class="small">{{ event.actor_display_name?.trim() || 'Autor indisponível' }}</span>
               <span class="small muted">{{ event.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
             </div>
           } @empty {
             <p class="small muted">{{ historyError() || 'Nenhum evento registrado.' }}</p>
           }
-        </aside>
-      </div>
-      <section class="panel task-comments-panel" aria-label="Comentários da pendência">
-        <h2>Comentários</h2>
-        @for (comment of comments(); track comment.id) {
-          <article class="comment-entry">
-            <div class="row">
-              <strong>{{ commentAuthorName(comment.author_id) || 'Autor indisponível' }}</strong>
-              <span class="small muted">{{ comment.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
-            </div>
-            <p>{{ comment.content }}</p>
-          </article>
-        } @empty {
-          <p class="small muted">{{ commentsError() || 'Nenhum comentário registrado.' }}</p>
-        }
-        <div class="comment-form">
-          <label
-            >Adicionar comentário
-            <textarea
-              rows="3"
-              [value]="commentText()"
-              (input)="commentText.set($any($event.target).value)"
-            ></textarea>
-          </label>
-          @if (commentError()) {
-            <p class="form-error" role="alert">{{ commentError() }}</p>
+          @if (sortedHistory().length > 4) {
+            <button #historyTrigger class="button tertiary history-toggle" type="button"
+              aria-haspopup="dialog" (click)="openHistoryModal()">
+              Ver histórico completo
+            </button>
           }
-          <button
-            class="button primary"
-            type="button"
-            (click)="submitComment()"
-            [disabled]="commenting()"
-          >
-            {{ commenting() ? 'Enviando…' : 'Comentar' }}
-          </button>
+        </aside>
         </div>
-      </section>
+      </div>
+      <dialog #historyModal class="move-dialog history-dialog" aria-labelledby="history-title"
+        (cancel)="cancelHistoryModal($event)" (close)="restoreHistoryFocus()">
+        <header>
+          <h2 #historyTitle id="history-title" tabindex="-1">Histórico completo</h2>
+          <button class="icon-button" type="button" aria-label="Fechar histórico" (click)="closeHistoryModal()"><app-icon name="close" /></button>
+        </header>
+        @for (event of sortedHistory(); track event.id) {
+          <div class="history-entry">
+            <strong>{{ historyContent(event) }}</strong>
+            <span class="small">{{ event.actor_display_name?.trim() || 'Autor indisponível' }}</span>
+            <span class="small muted">{{ event.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
+          </div>
+        }
+        <footer><button class="button secondary" type="button" (click)="closeHistoryModal()">Fechar</button></footer>
+      </dialog>
     } @else if (result().status === 'unavailable') {
       <section class="panel empty">
         <h1>Pendência não encontrada ou sem acesso</h1>
@@ -222,11 +321,96 @@ import { TaskEditing } from './task-editing';
 })
 export class TaskDetailPage {
   private readonly service = inject(TasksService);
+  private readonly boards = inject(BoardsService);
+  private readonly moveBoard = signal<BoardDetail | null>(null);
+  private readonly moveAdmin = signal(false);
+  readonly moveColumnId = signal('');
+  readonly moving = signal(false);
+  readonly moveFeedback = signal('');
+  readonly moveError = signal('');
+  readonly moveModalOpen = signal(false);
+  private readonly moveModal = viewChild<ElementRef<HTMLDialogElement>>('moveModal');
+  private readonly moveTrigger = viewChild<ElementRef<HTMLButtonElement>>('moveTrigger');
+  private readonly moveTitle = viewChild<ElementRef<HTMLElement>>('moveTitle');
+
+  openMoveModal(): void {
+    if (!this.canMove() || !this.moveDestinations().length || this.moving()) return;
+    this.moveColumnId.set('');
+    this.moveError.set('');
+    this.moveFeedback.set('');
+    this.moveModal()?.nativeElement.showModal();
+    this.moveModalOpen.set(true);
+    this.moveTitle()?.nativeElement.focus();
+  }
+
+  closeMoveModal(): void {
+    if (this.moving()) return;
+    this.moveModal()?.nativeElement.close();
+    this.moveModalClosed();
+  }
+
+  cancelMoveModal(event: Event): void {
+    event.preventDefault();
+    this.closeMoveModal();
+  }
+
+  moveModalClosed(): void {
+    this.moveModalOpen.set(false);
+    this.moveTrigger()?.nativeElement.focus();
+  }
+  readonly canMove = computed(() => {
+    const task = this.task();
+    const userId = this.auth.session()?.user.id;
+    // Same visibility and movement conditions used by the Kanban; RPC remains authoritative.
+    return !!task && !!userId && this.auth.profile()?.id === userId
+      && this.auth.profile()?.is_active === true && this.moveBoard()?.id === task.board_id
+      && (!task.is_private || this.moveAdmin() || task.assignee_id === userId || task.created_by === userId);
+  });
+  readonly moveDestinations = computed(() =>
+    (this.moveBoard()?.columns ?? []).filter(column => column.id !== this.task()?.column_id));
+  readonly moveDestination = computed(() =>
+    this.moveDestinations().find(column => column.id === this.moveColumnId()));
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  readonly backTarget = computed(() => {
+    // Only accept known Angular navigation origins, never a supplied URL.
+    const navigation = this.router.currentNavigation() ?? this.router.lastSuccessfulNavigation();
+    const origin: unknown = navigation?.extras.state?.['taskOrigin'];
+    if (origin === 'tasks') return { commands: ['/minhas-pendencias'], label: 'Minhas pendências' };
+    if (origin === 'home') return { commands: ['/inicio'], label: 'Início' };
+    if (origin === 'requests') return { commands: ['/solicitacoes'], label: 'Solicitações' };
+    const board = this.task()?.board;
+    return board
+      ? { commands: ['/quadros', board.id], label: 'Voltar ao quadro' }
+      : { commands: ['/minhas-pendencias'], label: 'Minhas pendências' };
+  });
   private readonly params = toSignal(inject(ActivatedRoute).paramMap);
   private readonly attempt = signal(0);
   private readonly assignees = signal<BoardAssignee[]>([]);
   readonly history = signal<TaskEvent[]>([]);
+  readonly sortedHistory = computed(() => [...this.history()].sort((a, b) =>
+    Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)));
+  readonly visibleHistory = computed(() => this.sortedHistory().slice(0, 4));
+  private readonly historyModal = viewChild<ElementRef<HTMLDialogElement>>('historyModal');
+  private readonly historyTrigger = viewChild<ElementRef<HTMLButtonElement>>('historyTrigger');
+  private readonly historyTitle = viewChild<ElementRef<HTMLElement>>('historyTitle');
+
+  openHistoryModal(): void {
+    this.historyModal()?.nativeElement.showModal();
+    this.historyTitle()?.nativeElement.focus();
+  }
+
+  closeHistoryModal(): void {
+    this.historyModal()?.nativeElement.close();
+    this.restoreHistoryFocus();
+  }
+
+  cancelHistoryModal(event: Event): void {
+    event.preventDefault();
+    this.closeHistoryModal();
+  }
+
+  restoreHistoryFocus(): void { this.historyTrigger()?.nativeElement.focus(); }
   readonly comments = signal<TaskComment[]>([]);
   readonly historyError = signal('');
   readonly commentsError = signal('');
@@ -275,6 +459,12 @@ export class TaskDetailPage {
         active = false;
       });
       this.result.set({ status: 'loading' });
+      this.moveBoard.set(null);
+      this.moveModalOpen.set(false);
+      this.moveAdmin.set(false);
+      this.moveColumnId.set('');
+      this.moveFeedback.set('');
+      this.moveError.set('');
       this.assignees.set([]);
       this.history.set([]);
       this.comments.set([]);
@@ -297,10 +487,59 @@ export class TaskDetailPage {
     this.result.set(result);
     if (result.status !== 'loaded') return;
     await Promise.all([
+      this.loadMoveBoard(result.task.board_id, isActive),
       this.loadAssignees(result.task.board_id, isActive),
       this.loadHistory(result.task.id, isActive),
       this.loadComments(result.task.id, isActive),
     ]);
+  }
+
+  private async loadMoveBoard(boardId: string, isActive: () => boolean): Promise<void> {
+    try {
+      const [result, admin] = await Promise.all([
+        this.boards.getById(boardId), this.boards.canManageStructure(boardId),
+      ]);
+      if (!isActive()) return;
+      this.moveBoard.set(result.status === 'loaded' && result.board.id === boardId ? result.board : null);
+      this.moveAdmin.set(admin);
+      if (result.status === 'error') this.moveError.set('Não foi possível carregar as colunas para movimentação.');
+    } catch {
+      if (isActive()) this.moveError.set('Não foi possível carregar as colunas para movimentação.');
+    }
+  }
+
+  async moveTask(): Promise<void> {
+    const task = this.task();
+    const destination = this.moveDestination();
+    if (!task || !destination || !this.canMove() || this.moving()) return;
+    const userId = this.auth.session()?.user.id;
+    const current = () => this.task()?.id === task.id && this.auth.session()?.user.id === userId;
+    this.moving.set(true);
+    this.moveError.set('');
+    this.moveFeedback.set('');
+    let moved = false;
+    try {
+      await this.service.moveToColumn(task.id, destination.id);
+      moved = true;
+      if (!current()) return;
+      this.moveFeedback.set(`Pendência movida para "${destination.title}".`);
+      this.moveColumnId.set('');
+      const refreshed = await this.service.getById(task.id);
+      if (!current()) return;
+      this.result.set(refreshed);
+      if (refreshed.status === 'loaded') await this.loadHistory(task.id, current);
+      else if (refreshed.status === 'error') this.moveError.set('Movimentação salva, mas não foi possível recarregar o detalhe. Tente novamente.');
+    } catch {
+      if (current()) {
+        this.moveError.set(moved
+          ? 'Movimentação salva, mas não foi possível recarregar o detalhe. Tente novamente.'
+          : 'Não foi possível mover a pendência. Atualize os dados e tente novamente.');
+        if (moved) this.result.set({ status: 'error' });
+      }
+    } finally {
+      this.moving.set(false);
+      if (moved) this.closeMoveModal();
+    }
   }
 
   private async loadAssignees(boardId: string, isActive: () => boolean): Promise<void> {

@@ -69,7 +69,14 @@ select throws_ok($$select public.rename_board_column('a4000000-0000-4000-8000-00
 select throws_ok($$select public.rename_board_column('a4000000-0000-4000-8000-000000000003', 'Inválida')$$, '42501', null::text, 'manager cannot rename another board column');
 
 select set_config('request.jwt.claim.sub', 'a1000000-0000-4000-8000-000000000004', true);
+create temporary table movement_before as
+select business_state, due_at, assignee_id, is_private, accepted_at, awaiting_reassignment, refused_assignee_id from public.tasks
+where id = 'a5000000-0000-4000-8000-000000000001';
 select lives_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001', 'a4000000-0000-4000-8000-000000000002')$$, 'assignee moves task within board');
+select results_eq(
+  $$select business_state, due_at, assignee_id, is_private, accepted_at, awaiting_reassignment, refused_assignee_id from public.tasks where id = 'a5000000-0000-4000-8000-000000000001'$$,
+  $$select * from movement_before$$,
+  'movement preserves state, deadline, assignee, privacy and acceptance');
 select is((select column_id from public.tasks where id = 'a5000000-0000-4000-8000-000000000001'), 'a4000000-0000-4000-8000-000000000002'::uuid, 'column_id changes');
 select is((select business_state::text from public.tasks where id = 'a5000000-0000-4000-8000-000000000001'), 'fazendo', 'business_state remains exactly unchanged');
 select throws_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001', 'a4000000-0000-4000-8000-000000000003')$$, '22023', null::text, 'cross-board move rejected');

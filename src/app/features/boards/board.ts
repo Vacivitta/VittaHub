@@ -9,14 +9,12 @@ import { Icon } from '../../shared/icon';
 import { PageHeading } from '../../shared/page-heading';
 import { BoardAssignee, TaskDetail } from '../tasks/task-detail';
 import { TasksService } from '../tasks/tasks.service';
-import { BoardColumn, BoardResult, BUSINESS_STATE_LABELS, ColumnBusinessState } from './board-detail';
+import { BoardColumn, BoardResult, BUSINESS_STATE_LABELS } from './board-detail';
 import { BoardsService } from './boards.service';
 
 @Component({
   styles: `
     .board-heading { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
-    .column-state-field { display: grid; gap: 4px; margin-bottom: 12px; font-size: 12px; }
-    .column-state-field select { width: 100%; min-width: 0; }
     .board-heading app-page-heading { flex: 1 1 300px; min-width: 0; }
     .local-admin-notice { position: relative; margin-left: auto; max-width: 340px; padding: 12px 40px 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; }
     .local-admin-notice strong { color: var(--text-primary); font-size: 13px; }
@@ -419,24 +417,6 @@ import { BoardsService } from './boards.service';
                   }
                 }
               </div>
-              <p class="column-description">
-                {{
-                  column.business_state
-                    ? 'Estado: ' + columnStateLabels[column.business_state]
-                    : 'Coluna organizacional · sem estado vinculado'
-                }}
-              </p>
-              @if (canManageColumns()) {
-                <label class="column-state-field">Estado vinculado
-                  <select [disabled]="columnBusy() || bindingBusy()"
-                    (change)="setColumnState(column, $any($event.target))">
-                    <option value="" [selected]="column.business_state === null">Sem vínculo</option>
-                    @for (state of columnStates; track state) {
-                      <option [value]="state" [selected]="column.business_state === state">{{ columnStateLabels[state] }}</option>
-                    }
-                  </select>
-                </label>
-              }
               <div class="task-list">
                 @for (task of tasksForColumn(column.id); track task.id) {
                   <a
@@ -445,7 +425,7 @@ import { BoardsService } from './boards.service';
                     [cdkDragData]="task"
                     [cdkDragDisabled]="!canMove(task)"
                     [class.draggable]="canMove(task)"
-                    [routerLink]="['/pendencias', task.id]"
+                    [routerLink]="['/pendencias', task.id]" [state]="{ taskOrigin: 'board' }"
                     [attr.aria-label]="'Abrir pendência ' + task.title"
                   >
                     <article class="task-card">
@@ -576,9 +556,6 @@ export class BoardPage {
   readonly managementError = signal('');
   readonly managementFeedback = signal('');
   readonly newColumnOpen = signal(false);
-  readonly columnStates: ColumnBusinessState[] = ['a_fazer', 'fazendo', 'aguardando_terceiro', 'concluido'];
-  readonly columnStateLabels = BUSINESS_STATE_LABELS;
-  readonly bindingBusy = signal(false);
   readonly newColumnName = signal('');
   readonly renamingColumnId = signal<string | null>(null);
   readonly renameColumnName = signal('');
@@ -904,7 +881,6 @@ export class BoardPage {
           id,
           title: name,
           position: columns.length ? Math.max(...columns.map((column) => column.position)) + 1 : 0,
-          business_state: null,
         },
       ]);
       this.newColumnOpen.set(false);
@@ -962,23 +938,6 @@ export class BoardPage {
       this.result.set({ status: 'loaded', board: { ...current.board, columns } });
   }
 
-  async setColumnState(column: BoardColumn, select: HTMLSelectElement): Promise<void> {
-    if (!this.canManageColumns() || this.columnBusy() || this.bindingBusy()) return;
-    const state = this.columnStates.find((state) => state === select.value) ?? null;
-    if (state === column.business_state) return;
-    this.bindingBusy.set(true);
-    this.managementError.set('');
-    this.managementFeedback.set('');
-    try {
-      await this.boardsService.setColumnState(column.id, state);
-      this.updateColumns((this.board()?.columns ?? []).map((item) =>
-        item.id === column.id ? { ...item, business_state: state } : item));
-      this.managementFeedback.set('Estado vinculado atualizado.');
-    } catch {
-      select.value = column.business_state ?? '';
-      this.managementError.set('Não foi possível salvar o estado vinculado. Tente novamente.');
-    } finally { this.bindingBusy.set(false); }
-  }
   retry(): void {
     this.attempt.update((attempt) => attempt + 1);
   }

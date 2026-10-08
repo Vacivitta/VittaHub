@@ -74,7 +74,7 @@
           <time [attr.datetime]="task.due_at">{{ absoluteDeadline(task) }}</time>
         </div>
         <div class="priority-actions">
-          <a class="button tertiary" [routerLink]="['/pendencias', task.id]"
+          <a class="button tertiary" [routerLink]="['/pendencias', task.id]" [state]="{ taskOrigin: 'home' }"
             >Ver pendência <app-icon name="arrow-right"
           /></a>
           <a class="button tertiary" [routerLink]="['/quadros', task.board_id]">Abrir no quadro</a>

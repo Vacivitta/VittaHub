@@ -6,7 +6,7 @@
 <button type="button" (click)="service.refresh()" [disabled]="service.loading()">Atualizar</button>
 @if (feedback(); as result) {
   <p class="note" role="status">
-    {{ result.message }} <a [routerLink]="['/pendencias', result.taskId]">Abrir pendência</a>
+    {{ result.message }} <a [routerLink]="['/pendencias', result.taskId]" [state]="{ taskOrigin: 'requests' }">Abrir pendência</a>
   </p>
 }
 @if (service.loading()) {
@@ -36,7 +36,7 @@
         >
           <span class="badge">{{ labels[item.kind] }}</span>
           <h3>
-            <a [routerLink]="['/pendencias', item.task.id]">{{ item.task.title }}</a>
+            <a [routerLink]="['/pendencias', item.task.id]" [state]="{ taskOrigin: 'requests' }">{{ item.task.title }}</a>
           </h3>
           <p class="small">Criador: {{ item.creator_name || 'Nome indisponível' }}</p>
           @if (item.task.awaiting_reassignment) {

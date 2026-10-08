@@ -1,13 +1,11 @@
 import { BoardSummary } from './board-summary';
 
 export type BusinessState = 'aguardando_aceite' | 'a_fazer' | 'fazendo' | 'aguardando_terceiro' | 'concluido';
-export type ColumnBusinessState = Exclude<BusinessState, 'aguardando_aceite'>;
 
 export interface BoardColumn {
   id: string;
   title: string;
   position: number;
-  business_state: BusinessState | null;
 }
 
 export interface BoardDetail extends BoardSummary {

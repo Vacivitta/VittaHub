@@ -1,6 +1,7 @@
+import { BoardsService } from '../boards/boards.service';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { AuthService } from '../../core/auth/auth.service';
 import { TaskDetailPage } from './task';
@@ -10,6 +11,14 @@ import { TasksService } from './tasks.service';
 describe('TaskDetailPage', () => {
   const id = '11111111-1111-4111-8111-111111111111';
   const getById = vi.fn();
+  const getBoard = vi.fn();
+  const canManageStructure = vi.fn();
+  const moveToColumn = vi.fn();
+  const columns = [
+    { id: 'column-1', title: 'Entrada', position: 0 },
+    { id: 'column-2', title: 'Destino personalizado', position: 1 },
+    { id: 'column-3', title: 'Arquivo livre', position: 2 },
+  ];
   const listAssignees = vi.fn();
   const listHistory = vi.fn();
   const listComments = vi.fn();
@@ -24,7 +33,7 @@ describe('TaskDetailPage', () => {
   const resume = vi.fn();
   const waitForThirdParty = vi.fn();
   const session = signal<{ user: { id: string } } | null>({ user: { id: 'user-1' } });
-  const profile = signal<{ id: string; display_name: string | null } | null>({ id: 'user-1', display_name: 'Pessoa Atual' });
+  const profile = signal<{ id: string; display_name: string | null; is_active?: boolean } | null>({ id: 'user-1', display_name: 'Pessoa Atual' });
   const auth = { session, profile, displayName: signal('Pessoa Atual') };
   const task: TaskWithContext = {
     id, board_id: 'board-1', column_id: 'column-1', title: 'Detalhe real',
@@ -35,6 +44,9 @@ describe('TaskDetailPage', () => {
   };
 
   beforeEach(() => {
+    getBoard.mockReset().mockResolvedValue({ status: 'loaded', board: { id: 'board-1', columns } });
+    canManageStructure.mockReset().mockResolvedValue(false);
+    moveToColumn.mockReset().mockResolvedValue(undefined);
     canEdit.mockReset().mockResolvedValue(false);
     edit.mockReset().mockResolvedValue(true);
     canReopen.mockReset().mockResolvedValue(false);
@@ -61,9 +73,10 @@ describe('TaskDetailPage', () => {
     resume.mockReset().mockResolvedValue(undefined);
     waitForThirdParty.mockReset().mockResolvedValue(undefined);
     TestBed.configureTestingModule({ providers: [
+      { provide: BoardsService, useValue: { getById: getBoard, canManageStructure } },
       provideRouter([{ path: 'pendencias/:id', component: TaskDetailPage }]),
       { provide: TasksService, useValue: {
-        getById, listAssignees, listHistory, listComments, addComment,
+        getById, moveToColumn, listAssignees, listHistory, listComments, addComment,
         assignmentCapabilities: vi.fn().mockResolvedValue({ can_manage: false, can_change_due_at: false }),
         listPostponements: vi.fn().mockResolvedValue([]),
         accept, start, complete, resume, waitForThirdParty, canReopen, reopen, canEdit, edit,
@@ -78,6 +91,186 @@ describe('TaskDetailPage', () => {
     harness.detectChanges();
     return harness;
   }
+
+  function allowMovement() {
+    profile.set({ id: 'user-1', display_name: 'Test', is_active: true });
+    getById.mockResolvedValue({ status: 'loaded', task: { ...task, is_private: false } });
+  }
+
+  it('loads the correct board and offers dynamic destinations excluding the current column', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    expect(getBoard).toHaveBeenCalledWith(task.board_id);
+    const modal = h.routeNativeElement!.querySelector<HTMLDialogElement>('.move-dialog')!;
+    expect(modal.open).toBe(false);
+    page.openMoveModal(); h.detectChanges();
+    expect(modal.open).toBe(true);
+    expect(modal.textContent).toContain('Entrada');
+    const options = modal.querySelectorAll<HTMLInputElement>('input[type="radio"]');
+    expect([...options].map(o => o.value)).toEqual(['column-2', 'column-3']);
+    const confirm = modal.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(confirm.disabled).toBe(true);
+    options[1].click(); h.detectChanges();
+    expect(confirm.disabled).toBe(false);
+    expect(confirm.textContent).toContain('Arquivo livre');
+    expect(options[1].closest('label')?.classList.contains('selected')).toBe(true);
+    expect(page.moveDestination()?.id).toBe('column-3');
+  });
+
+  it('focuses the dialog title and restores the trigger on Escape, cancel and close', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    const trigger = h.routeNativeElement!.querySelector<HTMLButtonElement>('.detail-tools > button')!;
+    const modal = h.routeNativeElement!.querySelector<HTMLDialogElement>('.move-dialog')!;
+    for (const action of ['escape', 'cancel', 'close']) {
+      trigger.focus(); trigger.click(); h.detectChanges();
+      expect(document.activeElement?.id).toBe('move-title');
+      if (action === 'escape') modal.dispatchEvent(new Event('cancel', { cancelable: true }));
+      else if (action === 'close') modal.querySelector<HTMLButtonElement>('.icon-button')!.click();
+      else modal.querySelector<HTMLButtonElement>('footer button[type="button"]')!.click();
+      h.detectChanges();
+      expect(modal.open).toBe(false);
+      expect(document.activeElement).toBe(trigger);
+    }
+    expect(moveToColumn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the modal open and blocks dismissal and duplicate submission while loading', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    let resolve!: () => void;
+    moveToColumn.mockImplementation(() => new Promise<void>(done => { resolve = done; }));
+    page.openMoveModal(); page.moveColumnId.set('column-2');
+    const pending = page.moveTask(); h.detectChanges();
+    const modal = h.routeNativeElement!.querySelector<HTMLDialogElement>('.move-dialog')!;
+    modal.dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(modal.open).toBe(true);
+    expect(modal.querySelector<HTMLFieldSetElement>('fieldset')!.disabled).toBe(true);
+    await page.moveTask(); expect(moveToColumn).toHaveBeenCalledTimes(1);
+    resolve(); await pending; h.detectChanges();
+    expect(modal.open).toBe(false);
+  });
+
+  it('does not offer movement for unauthorized private tasks or inactive users', async () => {
+    profile.set({ id: 'user-1', display_name: 'Test', is_active: true });
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    expect(h.routeNativeElement!.querySelector('.detail-tools > button')).toBeNull();
+    page.moveColumnId.set('column-2'); await page.moveTask();
+    expect(moveToColumn).not.toHaveBeenCalled();
+    page.result.set({ status: 'loaded', task: { ...task, is_private: false } });
+    profile.set({ id: 'user-1', display_name: 'Test', is_active: false }); h.detectChanges();
+    expect(h.routeNativeElement!.querySelector('.detail-tools > button')).toBeNull();
+  });
+
+  it.each(['assignee', 'creator', 'administrator'])('allows private movement for %s', async role => {
+    const userId = role === 'assignee' ? task.assignee_id! : role === 'creator' ? task.created_by : 'user-1';
+    session.set({ user: { id: userId } });
+    profile.set({ id: userId, display_name: 'Test', is_active: true });
+    canManageStructure.mockResolvedValue(role === 'administrator');
+    const h = await render();
+    expect(h.routeNativeElement!.querySelector('.detail-tools > button')).not.toBeNull();
+  });
+
+  it('offers no action when there are no other columns', async () => {
+    allowMovement();
+    getBoard.mockResolvedValue({ status: 'loaded', board: { id: 'board-1', columns: [columns[0]] } });
+    const h = await render();
+    expect(h.routeNativeElement!.querySelector('.detail-tools > button')).toBeNull();
+  });
+
+  it('rejects a destination outside the loaded board before calling the RPC', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    page.moveColumnId.set('another-board-column'); await page.moveTask();
+    expect(moveToColumn).not.toHaveBeenCalled();
+  });
+
+  it('refreshes detail and history after movement while preserving fields and origin', async () => {
+    allowMovement();
+    const h = await RouterTestingHarness.create();
+    await TestBed.inject(Router).navigate(['/pendencias', id], { state: { taskOrigin: 'home' } });
+    await h.fixture.whenStable(); h.detectChanges();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    const original = page.task()!;
+    const moved = { ...original, column_id: 'column-2', column: columns[1] };
+    getById.mockResolvedValue({ status: 'loaded', task: moved });
+    listHistory.mockResolvedValue([{ id: 'move-1', event_type: 'column_moved', content: 'Moved to destination', created_at: '2026-10-08T12:00:00Z' }]);
+    page.openMoveModal(); h.detectChanges();
+    page.moveColumnId.set('column-2'); await page.moveTask(); h.detectChanges();
+    expect(moveToColumn).toHaveBeenCalledExactlyOnceWith(id, 'column-2');
+    expect(page.task()).toEqual(moved);
+    expect(h.routeNativeElement!.querySelector<HTMLDialogElement>('.move-dialog')!.open).toBe(false);
+    for (const field of ['business_state', 'due_at', 'assignee_id', 'is_private', 'accepted_at'] as const)
+      expect(page.task()![field]).toEqual(original[field]);
+    expect(listHistory).toHaveBeenCalledTimes(2);
+    expect(h.routeNativeElement!.textContent).toContain('Moved to destination');
+    expect(h.routeNativeElement!.textContent).toContain('movida para "Destino personalizado"');
+    expect(h.routeNativeElement!.querySelector('.back-link')?.getAttribute('href')).toBe('/inicio');
+    expect(page.moveDestinations().map(c => c.id)).toEqual(['column-1', 'column-3']);
+  });
+
+  it('keeps the original detail and history on RPC rejection', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    const original = page.task();
+    moveToColumn.mockRejectedValue(new Error('42501'));
+    page.openMoveModal(); h.detectChanges();
+    page.moveColumnId.set('column-2'); await page.moveTask(); h.detectChanges();
+    expect(page.task()).toEqual(original);
+    expect(page.moveError()).toBeTruthy();
+    expect(page.moveFeedback()).toBe('');
+    expect(h.routeNativeElement!.querySelector<HTMLDialogElement>('.move-dialog')!.open).toBe(true);
+    expect(listHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a saved movement separately from a detail reload failure', async () => {
+    allowMovement();
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    getById.mockResolvedValue({ status: 'error' });
+    page.openMoveModal(); h.detectChanges();
+    page.moveColumnId.set('column-2'); await page.moveTask(); h.detectChanges();
+    expect(page.task()).toBeNull();
+    expect(h.routeNativeElement!.textContent).toContain('Movimentação salva');
+    expect(h.routeNativeElement!.querySelector('.detail-tools > button')).toBeNull();
+  });
+
+  it.each([
+    ['board', '/quadros/board-1'],
+    ['tasks', '/minhas-pendencias'],
+    ['home', '/inicio'],
+    ['requests', '/solicitacoes'],
+    ['https://example.com', '/quadros/board-1'],
+    [undefined, '/quadros/board-1'],
+  ])('returns safely for origin %s', async (origin, destination) => {
+    const harness = await RouterTestingHarness.create();
+    await TestBed.inject(Router).navigate(['/pendencias', id], { state: { taskOrigin: origin } });
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.back-link')?.getAttribute('href')).toBe(destination);
+  });
+
+  it('falls back to my tasks when the task is inaccessible', async () => {
+    getById.mockResolvedValue({ status: 'unavailable' });
+    const harness = await render();
+    expect(harness.routeNativeElement!.querySelector('.back-link')?.getAttribute('href')).toBe('/minhas-pendencias');
+  });
+
+  it('does not reuse an origin on a subsequent direct detail navigation', async () => {
+    const harness = await RouterTestingHarness.create();
+    await TestBed.inject(Router).navigate(['/pendencias', id], { state: { taskOrigin: 'home' } });
+    await harness.fixture.whenStable();
+    await TestBed.inject(Router).navigate(['/pendencias', '22222222-2222-4222-8222-222222222222']);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    expect(harness.routeNativeElement!.querySelector('.back-link')?.getAttribute('href')).toBe('/quadros/board-1');
+  });
 
   it('edits only title description and privacy and refreshes detail and history', async () => {
     session.set({ user: { id: task.created_by } });
@@ -479,7 +672,7 @@ describe('TaskDetailPage', () => {
     expect(listHistory).not.toHaveBeenCalled();
     expect(listComments).not.toHaveBeenCalled();
   });
-  it('renders authorized actor names, timestamps and descriptions for all supported events', async () => {
+  it('keeps four summary entries while opening and closing the complete history dialog', async () => {
     const events = [
       'accepted',
       'started',
@@ -502,7 +695,21 @@ describe('TaskDetailPage', () => {
       { ...events[0], id: 'unnamed', actor_display_name: null },
     ]);
     const harness = await render();
-    const entries = harness.routeNativeElement!.querySelectorAll('.history-entry');
+    const root = harness.routeNativeElement!;
+    expect(root.querySelector('.task-detail-main .task-comments-panel')).not.toBeNull();
+    const sidebar = root.querySelector('.task-history-panel')!;
+    const initial = sidebar.querySelectorAll('.history-entry');
+    expect(initial).toHaveLength(4);
+    const summaryBefore = sidebar.innerHTML;
+    const toggle = root.querySelector<HTMLButtonElement>('.history-toggle')!;
+    const modal = root.querySelector<HTMLDialogElement>('.history-dialog')!;
+    expect(toggle.textContent).toContain('Ver histórico completo');
+    expect(modal.open).toBe(false);
+    toggle.click(); harness.detectChanges();
+    expect(modal.open).toBe(true);
+    expect(document.activeElement?.id).toBe('history-title');
+    expect(sidebar.innerHTML).toBe(summaryBefore);
+    const entries = modal.querySelectorAll('.history-entry');
     expect(entries).toHaveLength(7);
     events.forEach((event, index) => {
       expect(entries[index].textContent).toContain(event.content);
@@ -511,6 +718,36 @@ describe('TaskDetailPage', () => {
       expect(entries[index].textContent).not.toContain('former-participant');
     });
     expect(entries[6].textContent).toContain('Autor indisponível');
+    for (const method of ['escape', 'x', 'button']) {
+      if (!modal.open) { toggle.click(); harness.detectChanges(); }
+      if (method === 'escape') modal.dispatchEvent(new Event('cancel', { cancelable: true }));
+      else modal.querySelector<HTMLButtonElement>(method === 'x' ? '.icon-button' : 'footer button')!.click();
+      harness.detectChanges();
+      expect(modal.open).toBe(false);
+      expect(document.activeElement).toBe(toggle);
+      expect(sidebar.innerHTML).toBe(summaryBefore);
+      expect(sidebar.querySelectorAll('.history-entry')).toHaveLength(4);
+    }
+  });
+
+  it('orders history by actual timestamp descending with a stable ID tie break', async () => {
+    listHistory.mockResolvedValue([
+      { id: 'old', created_at: '2026-09-28T11:00:00Z', content: 'Old' },
+      { id: 'b', created_at: '2026-09-28T12:00:00Z', content: 'Tie B' },
+      { id: 'offset', created_at: '2026-09-28T10:30:00-03:00', content: 'Newest' },
+      { id: 'a', created_at: '2026-09-28T12:00:00Z', content: 'Tie A' },
+      { id: 'middle', created_at: '2026-09-28T11:30:00Z', content: 'Middle' },
+    ]);
+    const harness = await render();
+    const page = harness.routeDebugElement!.componentInstance as TaskDetailPage;
+    expect(page.sortedHistory().map(event => event.id)).toEqual(['offset', 'a', 'b', 'middle', 'old']);
+    expect([...harness.routeNativeElement!.querySelectorAll('.task-history-panel .history-entry strong')]
+      .map(entry => entry.textContent)).toEqual(['Newest', 'Tie A', 'Tie B', 'Middle']);
+    expect(harness.routeNativeElement!.querySelector('.task-history-panel')!.textContent).not.toContain('Old');
+    harness.routeNativeElement!.querySelector<HTMLButtonElement>('.history-toggle')!.click();
+    harness.detectChanges();
+    expect([...harness.routeNativeElement!.querySelectorAll('.history-dialog .history-entry strong')]
+      .map(entry => entry.textContent)).toEqual(['Newest', 'Tie A', 'Tie B', 'Middle', 'Old']);
   });
 
   it('formats structured postponement and deadline events in local Brazilian date/time', async () => {

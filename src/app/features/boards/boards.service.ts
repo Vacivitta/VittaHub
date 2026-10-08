@@ -8,7 +8,7 @@ import {
   DepartmentOption,
   UpdateBoardInput,
 } from './board-summary';
-import { BoardDetail, BoardResult, ColumnBusinessState } from './board-detail';
+import { BoardDetail, BoardResult } from './board-detail';
 
 @Injectable({ providedIn: 'root' })
 export class BoardsService {
@@ -28,7 +28,7 @@ export class BoardsService {
       const { data, error, status } = await this.client
         .from('boards')
         .select(
-          'id, title, description, created_at, department:departments(name), columns:board_columns(id, title, position, business_state)',
+          'id, title, description, created_at, department:departments(name), columns:board_columns(id, title, position)',
         )
         .eq('id', id)
         .order('position', { referencedTable: 'columns', ascending: true })
@@ -168,16 +168,6 @@ export class BoardsService {
     } catch {
       throw new Error('Não foi possível renomear a coluna. Tente novamente.');
     }
-  }
-
-  async setColumnState(columnId: string, state: ColumnBusinessState | null): Promise<void> {
-    const userId = await this.authenticatedUser();
-    const { error } = await this.client.rpc('set_board_column_state', {
-      p_column_id: columnId,
-      p_business_state: state,
-    });
-    if (error || this.auth.session()?.user.id !== userId)
-      throw new Error('Não foi possível salvar o estado vinculado.');
   }
 
   async updateBoard(boardId: string, input: UpdateBoardInput): Promise<void> {

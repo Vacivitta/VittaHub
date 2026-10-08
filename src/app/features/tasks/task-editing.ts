@@ -22,7 +22,7 @@ import { TasksService } from './tasks.service';
       <button type="button" (click)="retryPermission()">Tentar verificar edição novamente</button>
     }
     @if (allowed()) {
-      <button type="button" (click)="open()" [disabled]="busy()">Editar pendência</button>
+      <button class="button secondary" type="button" (click)="open()" [disabled]="busy()">Editar pendência</button>
     }
     <dialog #modal aria-labelledby="edit-task-title" (cancel)="cancel($event)">
       <form (submit)="$event.preventDefault(); submit()">
