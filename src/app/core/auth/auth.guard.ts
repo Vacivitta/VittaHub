@@ -6,5 +6,5 @@ export const authGuard: CanActivateFn & CanActivateChildFn = async () => {
   const auth = inject(AuthService);
   const router = inject(Router);
   await auth.ready;
-  return auth.session() !== null || router.createUrlTree(['/login']);
+  return (await auth.validateAccess()) || router.createUrlTree(['/login']);
 };

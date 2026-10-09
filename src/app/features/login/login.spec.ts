@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { Login } from './login';
@@ -7,9 +8,13 @@ describe('Login', () => {
   const signIn = vi.fn();
   beforeEach(() => {
     signIn.mockReset().mockResolvedValue(undefined);
-    TestBed.configureTestingModule({ imports: [Login], providers: [
-      provideRouter([]), { provide: AuthService, useValue: { signIn } },
-    ] });
+    TestBed.configureTestingModule({
+      imports: [Login],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: { signIn, accessMessage: signal('') } },
+      ],
+    });
   });
 
   it('renders editable inputs and rejects an invalid form', async () => {
@@ -27,11 +32,19 @@ describe('Login', () => {
 
   it('submits entered values and navigates only after authentication succeeds', async () => {
     let complete!: () => void;
-    signIn.mockImplementation(() => new Promise<void>((resolve) => { complete = resolve; }));
+    signIn.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    );
     const fixture = TestBed.createComponent(Login);
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     fixture.detectChanges();
-    for (const [id, value] of [['email', 'local@example.invalid'], ['password', 'test-password']]) {
+    for (const [id, value] of [
+      ['email', 'local@example.invalid'],
+      ['password', 'test-password'],
+    ]) {
       const input = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement;
       input.value = value;
       input.dispatchEvent(new Event('input'));
@@ -56,7 +69,9 @@ describe('Login', () => {
     await fixture.componentInstance.submit();
     fixture.detectChanges();
     expect(navigate).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Não foi possível entrar.');
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
+      'Não foi possível entrar.',
+    );
     expect(fixture.nativeElement.textContent).not.toContain('sensitive server details');
     expect(fixture.componentInstance.busy()).toBe(false);
   });

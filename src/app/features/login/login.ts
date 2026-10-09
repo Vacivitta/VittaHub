@@ -27,6 +27,9 @@ import { Icon } from '../../shared/icon';
         <div class="login-form panel" aria-labelledby="login-title">
           <h2 id="login-title">Entrar no VittaHub</h2>
           <p class="muted">Use sua conta autorizada para acessar o espaço da Vacivitta.</p>
+          @if (auth.accessMessage()) {
+            <p role="alert">{{ auth.accessMessage() }}</p>
+          }
           <form [formGroup]="form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="busy()">
             <label for="email">E-mail</label>
             <input
@@ -78,7 +81,7 @@ import { Icon } from '../../shared/icon';
   styleUrl: './login.scss',
 })
 export class Login {
-  private readonly auth = inject(AuthService);
+  readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   readonly busy = signal(false);
   readonly error = signal('');

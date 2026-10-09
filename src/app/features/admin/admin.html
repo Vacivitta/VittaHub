@@ -75,6 +75,7 @@
     (changed)="loadTeam()"
   />
   <app-admin-activity (accessDenied)="invalidateAccess()" />
+  <app-employee-security />
   @if (!invalidSession()) {
     <section class="team-panel" aria-labelledby="team-title" [attr.aria-busy]="teamLoading()">
       <div class="managed-heading">

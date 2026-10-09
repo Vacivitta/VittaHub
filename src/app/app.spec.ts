@@ -10,11 +10,20 @@ import { BoardsService } from './features/boards/boards.service';
 import { ChatService } from './features/chat/chat.service';
 import { TasksService } from './features/tasks/tasks.service';
 import { RequestsService } from './features/requests/requests.service';
+import { EmployeeSecurityService } from './features/admin/employee-security.service';
 
 describe('Vacivitta interface', () => {
   const session = signal<object | null>({ user: { id: 'test-user' } });
   const auth = {
     session,
+    validateAccess: async (): Promise<boolean> => {
+      await auth.ready;
+      if (session() && !auth.profile() && !auth.profileError()) {
+        await vi.waitFor(() => expect(auth.profile() || auth.profileError()).toBeTruthy());
+      }
+      return !!session() && auth.profile()?.is_active === true;
+    },
+    accessMessage: signal(''),
     ready: Promise.resolve(),
     displayName: signal('Conta Local'),
     profile: signal<ReturnType<AuthService['profile']>>({
@@ -46,27 +55,37 @@ describe('Vacivitta interface', () => {
     TestBed.configureTestingModule({
       imports: [App],
       providers: [
+        {
+          provide: EmployeeSecurityService,
+          useValue: { context: async () => ({ is_master: false, can_manage: false }) },
+        },
         provideRouter(routes),
-        { provide: RequestsService, useValue: {
-          count: signal(0), highlighted: signal(null), loading: signal(false), error: signal(''),
-          decisions: signal([]), waiting: signal([]), refresh: vi.fn(),
-        } },
+        {
+          provide: RequestsService,
+          useValue: {
+            count: signal(0),
+            highlighted: signal(null),
+            loading: signal(false),
+            error: signal(''),
+            decisions: signal([]),
+            waiting: signal([]),
+            refresh: vi.fn(),
+          },
+        },
         {
           provide: AdminService,
           useValue: {
             listTeamMembers: vi.fn().mockResolvedValue([]),
-            getActivity: vi
-              .fn()
-              .mockResolvedValue({
-                completed: 0,
-                in_progress: 0,
-                average_seconds: null,
-                duration_samples: 0,
-                total_events: 0,
-                events: [],
-                boards: [],
-                people: [],
-              }),
+            getActivity: vi.fn().mockResolvedValue({
+              completed: 0,
+              in_progress: 0,
+              average_seconds: null,
+              duration_samples: 0,
+              total_events: 0,
+              events: [],
+              boards: [],
+              people: [],
+            }),
           },
         },
         { provide: AuthService, useValue: auth },
@@ -245,9 +264,9 @@ describe('Vacivitta interface', () => {
   });
 
   it('denies the requests route to an inactive authenticated member', async () => {
-    auth.profile.update(profile => profile ? { ...profile, is_active: false } : null);
+    auth.profile.update((profile) => (profile ? { ...profile, is_active: false } : null));
     await RouterTestingHarness.create('/solicitacoes');
-    expect(TestBed.inject(Router).url).toBe('/inicio');
+    expect(TestBed.inject(Router).url).toBe('/login');
   });
 
   it('protects child navigation when the shell is already active', async () => {
@@ -261,8 +280,8 @@ describe('Vacivitta interface', () => {
     ['gestor', true, '/administracao'],
     ['administrador', true, '/administracao'],
     ['membro', true, '/inicio'],
-    ['gestor', false, '/inicio'],
-    ['administrador', false, '/inicio'],
+    ['gestor', false, '/login'],
+    ['administrador', false, '/login'],
   ] as const)(
     'protects direct administration access for %s active=%s',
     async (role, is_active, expected) => {
@@ -291,7 +310,7 @@ describe('Vacivitta interface', () => {
     auth.profile.set(null);
     auth.profileError.set('Não foi possível carregar seu perfil.');
     await RouterTestingHarness.create('/administracao');
-    expect(TestBed.inject(Router).url).toBe('/inicio');
+    expect(TestBed.inject(Router).url).toBe('/login');
   });
 
   it('shows the real profile name and invokes logout from the layout', async () => {

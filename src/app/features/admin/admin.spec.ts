@@ -6,6 +6,7 @@ import { BoardsService } from '../boards/boards.service';
 import { BoardSummary } from '../boards/board-summary';
 import { Admin } from './admin';
 import { AdminService } from './admin.service';
+import { EmployeeSecurityService } from './employee-security.service';
 import { AdminAccessError } from './admin.models';
 
 @Component({ template: '' })
@@ -32,18 +33,16 @@ describe('Admin', () => {
   };
   const teamService = { listTeamMembers: vi.fn(), getActivity: vi.fn() };
   beforeEach(() => {
-    teamService.getActivity
-      .mockReset()
-      .mockResolvedValue({
-        completed: 0,
-        in_progress: 0,
-        average_seconds: null,
-        duration_samples: 0,
-        total_events: 0,
-        events: [],
-        boards: [],
-        people: [],
-      });
+    teamService.getActivity.mockReset().mockResolvedValue({
+      completed: 0,
+      in_progress: 0,
+      average_seconds: null,
+      duration_samples: 0,
+      total_events: 0,
+      events: [],
+      boards: [],
+      people: [],
+    });
     teamService.listTeamMembers.mockReset().mockResolvedValue([]);
     access.set(true);
     session.set({ user: { id: 'test-user' } });
@@ -60,6 +59,10 @@ describe('Admin', () => {
     TestBed.configureTestingModule({
       imports: [Admin],
       providers: [
+        {
+          provide: EmployeeSecurityService,
+          useValue: { context: async () => ({ is_master: false, can_manage: false }) },
+        },
         provideRouter([{ path: 'inicio', component: SafePage }]),
         { provide: AdminService, useValue: teamService },
         { provide: BoardsService, useValue: service },

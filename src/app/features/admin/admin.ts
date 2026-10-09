@@ -9,9 +9,10 @@ import { BoardsService } from '../boards/boards.service';
 import { BoardSummary } from '../boards/board-summary';
 import { AdminActivity } from './admin-activity';
 import { AdminParticipants } from './admin-participants';
+import { EmployeeSecurityPanel } from './employee-security';
 
 @Component({
-  imports: [PageHeading, Icon, RouterLink, AdminActivity, AdminParticipants],
+  imports: [PageHeading, Icon, RouterLink, AdminActivity, AdminParticipants, EmployeeSecurityPanel],
   templateUrl: './admin.html',
   styleUrl: './admin.scss',
 })

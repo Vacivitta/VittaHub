@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
 import {
@@ -80,6 +80,20 @@ export class Chat implements OnDestroy {
   });
 
   constructor() {
+    const initialUser = this.auth.session()?.user.id;
+    effect(() => {
+      if (this.auth.session()?.user.id !== initialUser || !this.auth.session()) {
+        this.conversationRevision++;
+        this.conversations.set([]);
+        this.messages.set([]);
+        this.participants.set([]);
+        this.candidates.set([]);
+        this.groupCandidates.set([]);
+        this.selected.set(null);
+        this.draft.set('');
+        void this.removeActiveSubscription();
+      }
+    });
     void this.loadConversations();
   }
 
@@ -101,13 +115,23 @@ export class Chat implements OnDestroy {
           const participants = await this.service.listConversationParticipants(conversation.id);
           if (conversation.kind === 'grupo') {
             const name = conversation.title?.trim() || 'Grupo';
-            return { conversation, name, initials: this.initials(name), participantCount: participants.length };
+            return {
+              conversation,
+              name,
+              initials: this.initials(name),
+              participantCount: participants.length,
+            };
           }
           const other = participants.find(
             (participant) => participant.user_id !== this.currentUserId(),
           );
           const name = other?.display_name?.trim() || 'Conversa individual';
-          return { conversation, name, initials: this.initials(name), participantCount: participants.length };
+          return {
+            conversation,
+            name,
+            initials: this.initials(name),
+            participantCount: participants.length,
+          };
         }),
       );
       if (!this.destroyed) this.conversations.set(items);
@@ -314,7 +338,9 @@ export class Chat implements OnDestroy {
   }
 
   authorInitials(message: ChatMessage): string {
-    const name = this.participants().find((person) => person.user_id === message.author_id)?.display_name;
+    const name = this.participants().find(
+      (person) => person.user_id === message.author_id,
+    )?.display_name;
     return this.initials(name?.trim() || this.authorName(message));
   }
 

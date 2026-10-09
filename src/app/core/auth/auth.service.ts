@@ -20,6 +20,8 @@ export class AuthService {
   readonly session = this.currentSession.asReadonly();
   readonly profile = this.currentProfile.asReadonly();
   readonly profileError = signal('');
+  readonly accessMessage = signal('');
+  private validation: Promise<boolean> | null = null;
   readonly canAccessAdministration = computed(() => {
     const profile = this.profile();
     return (
@@ -36,13 +38,23 @@ export class AuthService {
     const { data } = this.client.auth.onAuthStateChange((event, session) => {
       // Never await Supabase calls inside its auth callback (the auth lock is held).
       if (event === 'INITIAL_SESSION') return;
-      this.setSession(session);
+      queueMicrotask(() => {
+        this.setSession(session);
+        if (session) void this.validateAccess();
+      });
       if (!session) void this.router.navigateByUrl('/login');
     });
     inject(DestroyRef).onDestroy(() => {
       data.subscription.unsubscribe();
       this.revision++;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', visible);
     });
+    const visible = () => {
+      if (document.visibilityState === 'visible') void this.recheck();
+    };
+    const timer = setInterval(() => void this.recheck(), 60_000);
+    document.addEventListener('visibilitychange', visible);
     this.ready = this.restoreSession();
   }
 
@@ -55,8 +67,12 @@ export class AuthService {
       });
       if (error || !data.session) throw new Error();
       this.setSession(data.session);
+      if (!(await this.validateAccess())) throw new Error();
     } catch {
-      throw new Error('Não foi possível entrar. Confira e-mail e senha e tente novamente.');
+      throw new Error(
+        this.accessMessage() ||
+          'Não foi possível entrar. Confira e-mail e senha e tente novamente.',
+      );
     }
   }
 
@@ -77,7 +93,10 @@ export class AuthService {
     try {
       const { data, error } = await this.client.auth.getSession();
       if (error) throw new Error();
-      if (revision === this.revision) this.setSession(data.session);
+      if (revision === this.revision) {
+        this.setSession(data.session);
+        if (data.session) await this.validateAccess();
+      }
     } catch {
       if (revision === this.revision) this.setSession(null);
     }
@@ -88,13 +107,61 @@ export class AuthService {
     this.currentSession.set(session);
     // Refresh events for the same user must not clear a profile already loaded.
     if (session && session.user.id === previousId) return;
-    const revision = ++this.revision;
+    ++this.revision;
+    this.validation = null;
     this.currentProfile.set(null);
     this.profileError.set('');
-    if (session) {
-      // Defer the query until the synchronous auth callback has returned.
-      queueMicrotask(() => void this.loadOwnProfile(session.user.id, revision));
+  }
+
+  private async recheck(): Promise<void> {
+    if (this.session()) await this.validateAccess();
+  }
+
+  async validateAccess(): Promise<boolean> {
+    if (this.validation) return this.validation;
+    const session = this.session();
+    if (!session) return false;
+    const revision = this.revision;
+    const pending = (async () => {
+      try {
+        const { data, error } = await this.client.rpc('employee_access_status');
+        if (revision !== this.revision || this.session()?.user.id !== session.user.id) return false;
+        if (error) throw new Error();
+        if (data !== true) {
+          this.accessMessage.set('Acesso bloqueado. Após a reativação, entre novamente.');
+          await this.blockAccess(true);
+          return false;
+        }
+        await this.loadOwnProfile(session.user.id, revision);
+        if (revision !== this.revision) return false;
+        if (!this.profile()?.is_active || this.profileError()) throw new Error();
+        this.accessMessage.set('');
+        return true;
+      } catch {
+        if (revision === this.revision) {
+          this.accessMessage.set(
+            'Não foi possível verificar seu acesso. Confira a conexão e entre novamente.',
+          );
+          await this.blockAccess(false);
+        }
+        return false;
+      }
+    })();
+    this.validation = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.validation === pending) this.validation = null;
     }
+  }
+
+  private async blockAccess(administrative: boolean): Promise<void> {
+    this.setSession(null);
+    // Clear application state before any network-dependent cleanup.
+    const cleanup = this.client.removeAllChannels().catch(() => undefined);
+    void this.router.navigateByUrl('/login');
+    if (administrative) void this.client.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    await cleanup;
   }
 
   private async loadOwnProfile(userId: string, revision: number): Promise<void> {

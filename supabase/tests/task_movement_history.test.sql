@@ -68,7 +68,9 @@ select throws_ok($$select public.list_task_history('a5000000-0000-4000-8000-0000
 select is((select count(*)::integer from public.task_events where task_id='a5000000-0000-4000-8000-000000000002'),0,'RLS hides private history');
 select is((select count(*)::integer from public.task_events where task_id in ('a5000000-0000-4000-8000-000000000001','a5000000-0000-4000-8000-000000000002')),1,'no duplicate or failed-move events');
 reset role;
+select set_config('request.jwt.claim.sub','',true);
 update public.profiles set is_active=false where id='a1000000-0000-4000-8000-000000000005';
+select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000005',true);
 set local role authenticated;
 select throws_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000000000001','a4000000-0000-4000-8000-000000000001')$$,'42501',null::text,'inactive member cannot move');
 select throws_ok($$select public.list_task_history('a5000000-0000-4000-8000-000000000001')$$,'42501',null::text,'inactive caller cannot resolve history');
@@ -86,6 +88,9 @@ select lives_ok($$select public.move_task_to_column('a5000000-0000-4000-8000-000
 select is((select count(*)::integer from public.task_events where task_id in ('a5000000-0000-4000-8000-000000000001','a5000000-0000-4000-8000-000000000002')),5,'one event for each effective authorized move');
 reset role;
 update public.profiles set is_active=true where id='a1000000-0000-4000-8000-000000000005';
+-- A new login is required after reactivation, independent of board membership.
+insert into auth.sessions(id,user_id,created_at,updated_at) values('a1000000-0000-4000-8000-000000000005','a1000000-0000-4000-8000-000000000005',clock_timestamp(),clock_timestamp());
+select set_config('request.jwt.claims','{"session_id":"a1000000-0000-4000-8000-000000000005"}',true);
 delete from public.board_memberships where board_id='a3000000-0000-4000-8000-000000000001' and user_id in ('a1000000-0000-4000-8000-000000000002','a1000000-0000-4000-8000-000000000003','a1000000-0000-4000-8000-000000000004','a1000000-0000-4000-8000-000000000005');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000002',true);

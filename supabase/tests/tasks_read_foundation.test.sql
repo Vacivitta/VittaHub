@@ -14,7 +14,7 @@ select is((select count(*)::integer from pg_tables where schemaname='public' and
 select ok((select relrowsecurity and relforcerowsecurity from pg_class where oid='public.tasks'::regclass), 'tasks has enabled and forced RLS');
 
 -- Test 3
-select is((select count(*)::integer from pg_policies where schemaname='public' and tablename='tasks'), 1, 'only one task policy exists');
+select ok((select count(*)=2 and count(*) filter(where permissive='RESTRICTIVE' and policyname='active_employee_required')=1 from pg_policies where schemaname='public' and tablename='tasks'), 'task visibility policy plus mandatory active-session barrier');
 
 -- Test 4
 select ok(exists (select 1 from pg_policies where schemaname='public' and tablename='tasks' and cmd='SELECT' and roles=array['authenticated']::name[]), 'only authenticated SELECT policy');

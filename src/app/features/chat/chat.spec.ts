@@ -463,6 +463,20 @@ describe('Chat', () => {
     expect(removeMessageSubscription).toHaveBeenCalledWith(subscriptions[1].channel);
   });
 
+  it('clears messages and rejects queued Realtime callbacks after access is blocked', async () => {
+    const fixture = await render();
+    await openFirst(fixture);
+    const subscription = subscriptions[0];
+    session.set(null);
+    fixture.detectChanges();
+    subscription.onMessage({ ...older, id: 'late-message' });
+    subscription.onSubscribed();
+    await Promise.resolve();
+    expect(fixture.componentInstance.messages()).toEqual([]);
+    expect(fixture.componentInstance.conversations()).toEqual([]);
+    expect(removeMessageSubscription).toHaveBeenCalledWith(subscription.channel);
+  });
+
   it('adds Realtime messages and deduplicates matching message IDs', async () => {
     const fixture = await render();
     await openFirst(fixture);
