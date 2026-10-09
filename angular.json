@@ -47,6 +47,14 @@
               ],
               "outputHashing": "all"
             },
+            "homologation": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.production.local.ts"
+                }
+              ]
+            },
             "development": {
               "fileReplacements": [
                 {
