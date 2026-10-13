@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
@@ -47,15 +47,24 @@ import { Icon } from '../../shared/icon';
               }
             </span>
             <label for="password">Senha</label>
+            <div class="password-field">
             <input
+              #passwordInput
               id="password"
-              type="password"
+              [type]="passwordVisible() ? 'text' : 'password'"
               formControlName="password"
               autocomplete="current-password"
               placeholder="Digite sua senha"
               [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
               aria-describedby="password-error"
             />
+            <button class="password-toggle" type="button" aria-controls="password"
+              [attr.aria-label]="passwordVisible() ? 'Ocultar senha' : 'Mostrar senha'"
+              (pointerdown)="preservePasswordFocus($event, passwordInput)"
+              (click)="togglePassword(passwordInput)">
+              <app-icon [name]="passwordVisible() ? 'eye-off' : 'eye'" />
+            </button>
+            </div>
             <span id="password-error" class="field-message">
               @if (form.controls.password.touched && form.controls.password.invalid) {
                 Informe sua senha.
@@ -83,7 +92,9 @@ import { Icon } from '../../shared/icon';
 export class Login {
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly cdr = inject(ChangeDetectorRef);
   readonly busy = signal(false);
+  readonly passwordVisible = signal(false);
   readonly error = signal('');
   readonly form = new FormGroup({
     email: new FormControl('', {
@@ -92,6 +103,18 @@ export class Login {
     }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
+
+  preservePasswordFocus(event: PointerEvent, input: HTMLInputElement): void {
+    if (event.button === 0 && input.ownerDocument.activeElement === input) event.preventDefault();
+  }
+
+  togglePassword(input: HTMLInputElement): void {
+    const { selectionStart, selectionEnd, selectionDirection, scrollLeft } = input;
+    this.passwordVisible.update(visible => !visible);
+    this.cdr.detectChanges();
+    input.setSelectionRange(selectionStart, selectionEnd, selectionDirection ?? undefined);
+    input.scrollLeft = scrollLeft;
+  }
 
   async submit(): Promise<void> {
     if (this.busy()) return;

@@ -121,6 +121,27 @@
   color: var(--danger);
   font-size: 11px;
 }
+.password-field {
+  position: relative;
+  margin-top: 7px;
+  input { margin-top: 0; padding-right: 52px; }
+}
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  inset-block: 0;
+  margin-block: auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: color var(--transition), background var(--transition);
+  &:active:not(:disabled) { transform: none; }
+}
 .login-submit {
   width: 100%;
   min-height: 50px;

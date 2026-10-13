@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
@@ -8,7 +8,10 @@ import { RequestsService } from '../features/requests/requests.service';
 import { DecisionBadge } from '../features/requests/decision-badge';
 
 @Component({
-  host: { '[class.sidebar-collapsed]': 'sidebarCollapsed()' },
+  host: {
+    '[class.sidebar-collapsed]': 'sidebarCollapsed()',
+    '[class.sidebar-preview]': 'sidebarPreview()',
+  },
   imports: [RouterLink, RouterLinkActive, RouterOutlet, Icon, DecisionBadge],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
@@ -17,6 +20,7 @@ export class Shell {
   readonly auth = inject(AuthService);
   readonly requests = inject(RequestsService);
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.hoverTimer));
     inject(Router).events.pipe(filter(event => event instanceof NavigationEnd), takeUntilDestroyed())
       .subscribe(() => void this.requests.refresh());
   }
@@ -24,8 +28,40 @@ export class Shell {
   readonly logoutError = signal('');
   readonly menuOpen = signal(false);
   readonly sidebarCollapsed = signal(this.readSidebarPreference());
+  private readonly hovered = signal(false);
+  private readonly keyboardFocus = signal(false);
+  private hoverTimer?: ReturnType<typeof setTimeout>;
+  readonly sidebarPreview = computed(() =>
+    this.sidebarCollapsed() && (this.hovered() || this.keyboardFocus()),
+  );
+
+  previewSidebar(event: PointerEvent): void {
+    // Ignore touch and pressed pointers, including cards being dragged past the rail.
+    if (event.pointerType !== 'mouse' || event.buttons !== 0 ||
+        !window.matchMedia('(min-width: 721px) and (hover: hover)').matches) return;
+    clearTimeout(this.hoverTimer);
+    this.hoverTimer = setTimeout(() => this.hovered.set(true), 100);
+  }
+
+  leaveSidebar(): void {
+    clearTimeout(this.hoverTimer);
+    this.hoverTimer = setTimeout(() => this.hovered.set(false), 220);
+  }
+
+  focusSidebar(event: FocusEvent): void {
+    if ((event.target as HTMLElement).matches(':focus-visible')) this.keyboardFocus.set(true);
+  }
+
+  blurSidebar(event: FocusEvent): void {
+    if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+      this.keyboardFocus.set(false);
+    }
+  }
 
   toggleSidebar(): void {
+    clearTimeout(this.hoverTimer);
+    this.hovered.set(false);
+    this.keyboardFocus.set(false);
     this.sidebarCollapsed.update((collapsed) => !collapsed);
     try {
       localStorage.setItem('vittahub.sidebarCollapsed', String(this.sidebarCollapsed()));

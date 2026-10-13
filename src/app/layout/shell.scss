@@ -7,7 +7,7 @@
   width: 264px;
   padding: 30px 22px 22px;
   background: var(--surface-sidebar);
-  transition: width 200ms ease, padding 200ms ease;
+  transition: width 200ms ease;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -159,45 +159,57 @@ main {
 main:has(.chat-page) { padding: 0; }
 .workspace:has(.chat-page) .workspace-footer { display: none; }
 @media (min-width: 721px) {
-  :host(.sidebar-collapsed) {
-    app-decision-badge { position: absolute; top: 0; right: -3px; }
-    .sidebar { width: 80px; padding-inline: 12px; }
-    .workspace { margin-left: 80px; }
-    .sidebar-brand { align-self: center; }
-    .sidebar-brand > img:not(.compact-brand), .sidebar-brand > span,
-    .nav-label, .sidebar-note, .nav-text { display: none; }
-    .sidebar-brand .compact-brand { display: block; width: 38px; }
-    .sidebar-toggle { align-self: center; margin-bottom: 20px; }
-    nav a, .exit-link { justify-content: center; padding-inline: 0; }
-    .exit-link { margin-top: auto; }
-    .nav-tooltip {
-      position: absolute;
-      display: block;
-      left: calc(100% + 8px);
-      top: 50%;
-      transform: translate(4px, -50%);
-      padding: 7px 11px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface-elevated);
-      color: var(--text-primary);
-      white-space: nowrap;
-      font-size: 12px;
-      opacity: 0;
+  :host { --sidebar-expanded-width: 264px; }
+  .sidebar {
+    width: var(--sidebar-expanded-width);
+    padding-inline: 12px;
+    overflow: hidden auto;
+  }
+  // Keep the internal layout in place; only the outer rail changes width.
+  .navigation { width: calc(var(--sidebar-expanded-width) - 25px); }
+  .sidebar-brand {
+    position: relative;
+    width: 100%;
+    height: 56px;
+    flex: 0 0 56px;
+  }
+  .sidebar-brand img { position: absolute; left: 14px; top: 0; }
+  .sidebar-brand .compact-brand {
+    display: block;
+    left: 8px;
+    width: 38px;
+    visibility: hidden;
+  }
+  .sidebar-toggle { align-self: flex-start; flex: 0 0 44px; margin-left: 6px; }
+  .nav-label { height: 15px; line-height: 15px; white-space: nowrap; }
+  nav a { height: 48px; white-space: nowrap; }
+  .nav-icon { flex: 0 0 25px; }
+  .nav-text { white-space: nowrap; }
+  .sidebar-note { flex-shrink: 0; white-space: nowrap; }
+  .exit-link { justify-content: flex-start; height: 46px; flex-shrink: 0; }
+  .exit-link > app-icon { width: 25px; justify-content: center; }
+  nav a:active, .sidebar-toggle:active:not(:disabled), .exit-link:active:not(:disabled) {
+    transform: none;
+  }
+  app-decision-badge { position: absolute; top: 0; left: 34px; }
+  :host(.sidebar-collapsed) .workspace { margin-left: 80px; }
+  :host(.sidebar-preview) .sidebar {
+    box-shadow: var(--shadow-md);
+    transition-duration: 150ms;
+  }
+  :host(.sidebar-collapsed:not(.sidebar-preview)) {
+    .sidebar { width: 80px; }
+    .sidebar-brand > img:not(.compact-brand), .nav-label, .sidebar-note, .nav-text {
       visibility: hidden;
-      transition: opacity 160ms ease, transform 160ms ease;
     }
-    nav a:hover .nav-tooltip, nav a:focus-visible .nav-tooltip,
-    .exit-link:hover .nav-tooltip, .exit-link:focus-visible .nav-tooltip {
-      opacity: 1; visibility: visible; transform: translate(0, -50%);
-    }
+    .sidebar-brand .compact-brand { visibility: visible; }
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .workspace, .nav-tooltip { transition: none !important; }
+}
 @media (max-width: 1000px) {
-  .sidebar {
-    width: 224px;
-    padding-inline: 16px;
-  }
+  :host { --sidebar-expanded-width: 224px; }
   .workspace {
     margin-left: 224px;
   }

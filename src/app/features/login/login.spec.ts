@@ -53,7 +53,7 @@ describe('Login', () => {
     await fixture.componentInstance.submit();
     fixture.detectChanges();
     expect(signIn).toHaveBeenCalledExactlyOnceWith('local@example.invalid', 'test-password');
-    expect(fixture.nativeElement.querySelector('button').disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(true);
     expect(navigate).not.toHaveBeenCalled();
     complete();
     await pending;
@@ -74,5 +74,75 @@ describe('Login', () => {
     );
     expect(fixture.nativeElement.textContent).not.toContain('sensitive server details');
     expect(fixture.componentInstance.busy()).toBe(false);
+  });
+
+  it('toggles password visibility without changing values or submitting and starts hidden on a new visit', () => {
+    const fixture = TestBed.createComponent(Login);
+    fixture.componentInstance.form.setValue({ email: 'local@example.invalid', password: 'fictitious-password' });
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#password') as HTMLInputElement;
+    const button = fixture.nativeElement.querySelector('.password-toggle') as HTMLButtonElement;
+    expect(input.type).toBe('password');
+    expect(button.getAttribute('aria-label')).toBe('Mostrar senha');
+    expect(button.type).toBe('button');
+    button.click();
+    fixture.detectChanges();
+    expect(input.type).toBe('text');
+    expect(button.getAttribute('aria-label')).toBe('Ocultar senha');
+    expect(input.value).toBe('fictitious-password');
+    expect(fixture.componentInstance.form.controls.password.value).toBe('fictitious-password');
+    expect(signIn).not.toHaveBeenCalled();
+    button.click();
+    fixture.detectChanges();
+    expect(input.type).toBe('password');
+    expect(input.value).toBe('fictitious-password');
+    button.click();
+    fixture.destroy();
+    const next = TestBed.createComponent(Login);
+    next.detectChanges();
+    expect(next.nativeElement.querySelector('#password').type).toBe('password');
+  });
+
+  it('preserves input focus, selection and horizontal scroll when toggled by pointer', () => {
+    const fixture = TestBed.createComponent(Login);
+    fixture.componentInstance.form.controls.password.setValue('fictitious-password');
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#password') as HTMLInputElement;
+    const button = fixture.nativeElement.querySelector('.password-toggle') as HTMLButtonElement;
+    input.focus();
+    input.setSelectionRange(2, 8, 'backward');
+    input.scrollLeft = 12;
+    for (const type of ['text', 'password']) {
+      const pointer = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+      button.dispatchEvent(pointer);
+      expect(pointer.defaultPrevented).toBe(true);
+      button.click();
+      fixture.detectChanges();
+      expect(document.activeElement).toBe(input);
+      expect(input.type).toBe(type);
+      expect([input.selectionStart, input.selectionEnd, input.selectionDirection]).toEqual([2, 8, 'backward']);
+      expect(input.scrollLeft).toBe(12);
+      expect(input.value).toBe('fictitious-password');
+    }
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the toggle focused for keyboard activation without changing the saved caret', () => {
+    const fixture = TestBed.createComponent(Login);
+    fixture.componentInstance.form.controls.password.setValue('fictitious-password');
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#password') as HTMLInputElement;
+    const button = fixture.nativeElement.querySelector('.password-toggle') as HTMLButtonElement;
+    input.setSelectionRange(4, 4);
+    button.focus();
+    button.click();
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(button);
+    expect(input.selectionStart).toBe(4);
+    expect(input.selectionEnd).toBe(4);
+    expect(button.getAttribute('aria-label')).toBe('Ocultar senha');
+    const pointer = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+    button.dispatchEvent(pointer);
+    expect(pointer.defaultPrevented).toBe(false);
   });
 });

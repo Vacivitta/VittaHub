@@ -1,5 +1,6 @@
 <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
-<aside class="sidebar">
+<aside class="sidebar" (pointerenter)="previewSidebar($event)" (pointerleave)="leaveSidebar()"
+  (focusin)="focusSidebar($event)" (focusout)="blurSidebar($event)">
   <a
     class="sidebar-brand"
     routerLink="/inicio"
@@ -10,8 +11,10 @@
     <img class="compact-brand" src="/brand/vacivitta-symbol.png" alt="" />
   </a>
   <button class="sidebar-toggle" type="button" (click)="toggleSidebar()"
-    [attr.aria-label]="sidebarCollapsed() ? 'Expandir barra lateral' : 'Recolher barra lateral'"
-    [attr.aria-expanded]="!sidebarCollapsed()" aria-controls="navigation">
+    [attr.aria-label]="sidebarCollapsed() ? 'Fixar barra lateral' : 'Desafixar barra lateral'"
+    [attr.title]="sidebarCollapsed() ? 'Fixar barra lateral' : 'Desafixar barra lateral'"
+    [attr.aria-pressed]="!sidebarCollapsed()"
+    [attr.aria-expanded]="!sidebarCollapsed() || sidebarPreview()" aria-controls="navigation">
     <app-icon [name]="sidebarCollapsed() ? 'panel-open' : 'panel-close'" />
   </button>
   <button

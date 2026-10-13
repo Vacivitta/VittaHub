@@ -1,6 +1,8 @@
 import { Component, input } from '@angular/core';
 
 export type IconName =
+  | 'eye'
+  | 'eye-off'
   | 'alert'
   | 'panel-open'
   | 'panel-close'
@@ -36,6 +38,13 @@ export type IconName =
       stroke-linejoin="round"
     >
       @switch (name()) {
+        @case ('eye') {
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        }
+        @case ('eye-off') {
+          <path d="m3 3 18 18M9.5 5.3A12 12 0 0 1 12 5c6.5 0 10 7 10 7a19 19 0 0 1-3 4M6 6a21 21 0 0 0-4 6s3.5 7 10 7a12 12 0 0 0 5-1M10 10a3 3 0 0 0 4 4" />
+        }
         @case ('alert') {
           <path d="M12 3 2 21h20L12 3Z" />
           <path d="M12 9v5m0 3v.1" />
