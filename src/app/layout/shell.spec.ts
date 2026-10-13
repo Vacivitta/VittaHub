@@ -1,9 +1,17 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { Shell } from './shell';
 import { RequestsService } from '../features/requests/requests.service';
+
+@Component({
+  template: `<button type="button" (click)="filter.set('atrasadas')">Filtrar</button>
+    <output>{{ filter() }}</output>`,
+})
+class SkipTargetPage {
+  readonly filter = signal('todas');
+}
 
 describe('Shell sidebar', () => {
   const key = 'vittahub.sidebarCollapsed';
@@ -16,7 +24,10 @@ describe('Shell sidebar', () => {
     TestBed.configureTestingModule({
       imports: [Shell],
       providers: [
-        provideRouter([{ path: 'inicio', children: [] }]),
+        provideRouter([
+          'inicio', 'quadros', 'quadros/:id', 'minhas-pendencias',
+          'pendencias/:id', 'chat', 'solicitacoes', 'administracao',
+        ].map(path => ({ path, component: SkipTargetPage }))),
         { provide: RequestsService, useValue: { count, refresh: vi.fn() } },
         {
           provide: AuthService,
@@ -35,6 +46,45 @@ describe('Shell sidebar', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     localStorage.removeItem(key);
+  });
+
+  it.each([
+    '/minhas-pendencias?estado=fazendo&prazo=atrasadas#filtros',
+    '/inicio', '/quadros', '/quadros/quadro-teste', '/pendencias/pendencia-teste',
+    '/chat?conversa=teste', '/solicitacoes', '/administracao',
+  ])('skips to main without navigation or loss of page state on %s', async (url) => {
+    const fixture = TestBed.createComponent(Shell);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl(url);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const main = fixture.nativeElement.querySelector('main') as HTMLElement;
+    const control = main.querySelector('button')!;
+    control.click();
+    fixture.detectChanges();
+    expect(main.querySelector('output')?.textContent).toBe('atrasadas');
+    const navigations = vi.fn();
+    const subscription = router.events.subscribe(navigations);
+    try {
+      const skipLink = fixture.nativeElement.querySelector('.skip-link') as HTMLAnchorElement;
+      skipLink.focus();
+      expect(document.activeElement).toBe(skipLink);
+      // Enter on a native link produces a click with detail 0.
+      const activation = new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 });
+      skipLink.dispatchEvent(activation);
+      await fixture.whenStable();
+      expect(activation.defaultPrevented).toBe(true);
+      expect(router.url).toBe(url);
+      expect(navigations).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(main);
+      expect(main.tabIndex).toBe(-1);
+      expect(main.querySelector('button')).toBe(control);
+      expect(control.tabIndex).toBe(0);
+      expect(main.querySelector('output')?.textContent).toBe('atrasadas');
+    } finally {
+      subscription.unsubscribe();
+    }
   });
 
   it('toggles the desktop sidebar, exposes accessible labels and persists the preference', () => {

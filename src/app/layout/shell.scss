@@ -2,6 +2,7 @@
   display: block;
 }
 .sidebar {
+  --text-muted: #617269;
   position: fixed;
   inset: 0 auto 0 0;
   width: 264px;
@@ -83,6 +84,23 @@ nav a:active {
   display: inline-flex;
   width: 22px;
   font-size: 20px;
+}
+.sidebar a:focus-visible,
+.sidebar button:focus-visible {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: -3px;
+}
+// Navigation items keep their expanded width inside the collapsed rail.
+// Outline the stationary icons so the complete focus ring stays visible.
+.sidebar nav a:focus-visible,
+.sidebar .exit-link:focus-visible {
+  outline: none;
+}
+.sidebar nav a:focus-visible .nav-icon,
+.sidebar .exit-link:focus-visible > app-icon {
+  outline: 3px solid var(--brand-primary);
+  outline-offset: 4px;
+  border-radius: 2px;
 }
 .sidebar-note {
   margin-top: auto;

@@ -1,18 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
-import { AuthService } from '../../core/auth/auth.service';
+import { AuthService, LOGIN_MESSAGES } from '../../core/auth/auth.service';
 import { Login } from './login';
 
 describe('Login', () => {
   const signIn = vi.fn();
+  const accessMessage = signal('');
   beforeEach(() => {
     signIn.mockReset().mockResolvedValue(undefined);
+    accessMessage.set('');
     TestBed.configureTestingModule({
       imports: [Login],
       providers: [
         provideRouter([]),
-        { provide: AuthService, useValue: { signIn, accessMessage: signal('') } },
+        { provide: AuthService, useValue: { signIn, accessMessage } },
       ],
     });
   });
@@ -26,8 +28,72 @@ describe('Login', () => {
     await fixture.componentInstance.submit();
     fixture.detectChanges();
     expect(signIn).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('Informe um e-mail válido.');
+    expect(fixture.nativeElement.textContent).toContain('Informe seu e-mail.');
     expect(fixture.nativeElement.textContent).toContain('Informe sua senha.');
+  });
+
+  it.each([
+    ['', '', 'email', 'Informe seu e-mail.'],
+    ['invalido', 'senha fictícia', 'email', 'Informe um e-mail válido.'],
+    ['local@example.invalid', '', 'password', 'Informe sua senha.'],
+  ])('focuses the first invalid field and preserves values (%s)', async (email, password, id, message) => {
+    const fixture = TestBed.createComponent(Login);
+    fixture.componentInstance.form.setValue({ email, password });
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement;
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+    input.focus();
+    const focus = vi.spyOn(input, 'focus');
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(input);
+    expect(focus).toHaveBeenCalled();
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    const description = fixture.nativeElement.querySelector(`#${input.getAttribute('aria-describedby')}`);
+    expect(description.textContent.trim()).toBe(message);
+    expect(description.hasAttribute('role')).toBe(false);
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent.trim()).toBe('');
+    expect(fixture.componentInstance.form.getRawValue()).toEqual({ email, password });
+    expect(signIn).not.toHaveBeenCalled();
+    if (id === 'email') {
+      input.value = 'correct@example.invalid';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(input.getAttribute('aria-invalid')).toBe('false');
+      expect(description.textContent.trim()).toBe('');
+    }
+  });
+
+  it.each(Object.values(LOGIN_MESSAGES))('renders one coherent authentication alert: %s', async message => {
+    accessMessage.set('Orientação da sessão anterior.');
+    signIn.mockImplementation(async () => {
+      accessMessage.set(message);
+      throw new Error('private detail');
+    });
+    const fixture = TestBed.createComponent(Login);
+    fixture.componentInstance.form.setValue({ email: 'local@example.invalid', password: 'wrong' });
+    fixture.detectChanges();
+    const alert = fixture.nativeElement.querySelector('[role="alert"]');
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBe(alert);
+    expect(alert.textContent.trim()).toBe(message);
+    expect(fixture.nativeElement.textContent).not.toContain('private detail');
+    expect(fixture.nativeElement.textContent).not.toContain('Orientação da sessão anterior.');
+  });
+
+  it('clears outdated authentication guidance when a new attempt has invalid fields', async () => {
+    const fixture = TestBed.createComponent(Login);
+    accessMessage.set(LOGIN_MESSAGES.inactive);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('inativa');
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent.trim()).toBe('');
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#email'));
+    expect(signIn).not.toHaveBeenCalled();
   });
 
   it('submits entered values and navigates only after authentication succeeds', async () => {

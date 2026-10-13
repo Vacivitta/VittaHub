@@ -1,7 +1,7 @@
-import { ChangeDetectorRef, Component, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth/auth.service';
+import { AuthService, LOGIN_MESSAGES } from '../../core/auth/auth.service';
 import { Icon } from '../../shared/icon';
 
 @Component({
@@ -27,12 +27,10 @@ import { Icon } from '../../shared/icon';
         <div class="login-form panel" aria-labelledby="login-title">
           <h2 id="login-title">Entrar no VittaHub</h2>
           <p class="muted">Use sua conta autorizada para acessar o espaço da Vacivitta.</p>
-          @if (auth.accessMessage()) {
-            <p role="alert">{{ auth.accessMessage() }}</p>
-          }
           <form [formGroup]="form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="busy()">
             <label for="email">E-mail</label>
             <input
+              #emailInput
               id="email"
               type="email"
               formControlName="email"
@@ -43,7 +41,7 @@ import { Icon } from '../../shared/icon';
             />
             <span id="email-error" class="field-message">
               @if (form.controls.email.touched && form.controls.email.invalid) {
-                Informe um e-mail válido.
+                {{ form.controls.email.hasError('required') ? 'Informe seu e-mail.' : 'Informe um e-mail válido.' }}
               }
             </span>
             <label for="password">Senha</label>
@@ -70,9 +68,11 @@ import { Icon } from '../../shared/icon';
                 Informe sua senha.
               }
             </span>
-            @if (error()) {
-              <p class="feedback error" role="alert">{{ error() }}</p>
-            }
+            <div role="alert" aria-atomic="true">
+              @if (authenticationMessage()) {
+                <p class="feedback error">{{ authenticationMessage() }}</p>
+              }
+            </div>
             <button class="button primary login-submit" type="submit" [disabled]="busy()">
               {{ busy() ? 'Entrando…' : 'Entrar' }}<app-icon name="arrow-right" />
             </button>
@@ -93,9 +93,12 @@ export class Login {
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly emailInput = viewChild<ElementRef<HTMLInputElement>>('emailInput');
+  private readonly passwordInput = viewChild<ElementRef<HTMLInputElement>>('passwordInput');
   readonly busy = signal(false);
   readonly passwordVisible = signal(false);
   readonly error = signal('');
+  readonly authenticationMessage = computed(() => this.error() || this.auth.accessMessage());
   readonly form = new FormGroup({
     email: new FormControl('', {
       nonNullable: true,
@@ -119,8 +122,18 @@ export class Login {
   async submit(): Promise<void> {
     if (this.busy()) return;
     this.error.set('');
+    this.auth.accessMessage.set('');
     this.form.markAllAsTouched();
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      // Render descriptions before focus so assistive technology reads the current error.
+      this.cdr.detectChanges();
+      const input = (this.form.controls.email.invalid ? this.emailInput() : this.passwordInput())?.nativeElement;
+      if (input) {
+        if (input.ownerDocument.activeElement === input) input.blur();
+        input.focus();
+      }
+      return;
+    }
     this.busy.set(true);
     try {
       const { email, password } = this.form.getRawValue();
@@ -128,7 +141,7 @@ export class Login {
       this.form.controls.password.reset();
       await this.router.navigateByUrl('/inicio');
     } catch {
-      this.error.set('Não foi possível entrar. Confira e-mail e senha e tente novamente.');
+      this.error.set(this.auth.accessMessage() || LOGIN_MESSAGES.generic);
       this.form.controls.password.reset();
     } finally {
       this.busy.set(false);

@@ -1,6 +1,6 @@
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Session } from '@supabase/supabase-js';
+import { isAuthApiError, isAuthRetryableFetchError, Session } from '@supabase/supabase-js';
 import { SUPABASE_CLIENT } from '../supabase/supabase-client';
 
 interface OwnProfile {
@@ -9,6 +9,15 @@ interface OwnProfile {
   role: 'membro' | 'gestor' | 'administrador';
   is_active: boolean;
 }
+
+export const LOGIN_MESSAGES = {
+  credentials: 'E-mail ou senha inválidos. Confira os dados e tente novamente.',
+  unauthorized: 'Seu acesso ao VittaHub não foi autorizado. Entre novamente; se o problema continuar, procure a administração.',
+  inactive: 'Esta conta está inativa. Procure a administração e, após a reativação, entre novamente.',
+  unavailable: 'Não foi possível entrar agora. Confira a conexão e tente novamente em instantes.',
+  verification: 'Não foi possível verificar seu acesso. Confira a conexão e entre novamente.',
+  generic: 'Não foi possível entrar. Tente novamente; se o problema continuar, procure a administração.',
+} as const;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -60,20 +69,32 @@ export class AuthService {
 
   async signIn(email: string, password: string): Promise<void> {
     await this.ready;
+    this.accessMessage.set('');
     try {
       const { data, error } = await this.client.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
-      if (error || !data.session) throw new Error();
+      if (error) throw error;
+      if (!data.session) throw new Error();
       this.setSession(data.session);
       if (!(await this.validateAccess())) throw new Error();
-    } catch {
-      throw new Error(
-        this.accessMessage() ||
-          'Não foi possível entrar. Confira e-mail e senha e tente novamente.',
-      );
+    } catch (error) {
+      const message = this.accessMessage() || this.signInErrorMessage(error);
+      this.accessMessage.set(message);
+      throw new Error(message);
     }
+  }
+
+  private signInErrorMessage(error: unknown): string {
+    if (isAuthApiError(error)) {
+      if (error.code === 'invalid_credentials') return LOGIN_MESSAGES.credentials;
+      if (error.code === 'user_banned') return LOGIN_MESSAGES.inactive;
+      if (error.code === 'email_not_confirmed') return LOGIN_MESSAGES.unauthorized;
+      if (error.status >= 500) return LOGIN_MESSAGES.unavailable;
+    }
+    if (isAuthRetryableFetchError(error) || error instanceof TypeError) return LOGIN_MESSAGES.unavailable;
+    return LOGIN_MESSAGES.generic;
   }
 
   async signOut(): Promise<void> {
@@ -128,7 +149,8 @@ export class AuthService {
         if (revision !== this.revision || this.session()?.user.id !== session.user.id) return false;
         if (error) throw new Error();
         if (data !== true) {
-          this.accessMessage.set('Acesso bloqueado. Após a reativação, entre novamente.');
+          // A boolean denial also covers missing profiles and revoked sessions.
+          this.accessMessage.set(LOGIN_MESSAGES.unauthorized);
           await this.blockAccess(true);
           return false;
         }
@@ -139,9 +161,8 @@ export class AuthService {
         return true;
       } catch {
         if (revision === this.revision) {
-          this.accessMessage.set(
-            'Não foi possível verificar seu acesso. Confira a conexão e entre novamente.',
-          );
+          this.accessMessage.set(this.profileError() ||
+            (this.profile()?.is_active === false ? LOGIN_MESSAGES.inactive : LOGIN_MESSAGES.verification));
           await this.blockAccess(false);
         }
         return false;
@@ -172,11 +193,15 @@ export class AuthService {
         .select('id, display_name, role, is_active')
         .eq('id', userId)
         .maybeSingle<OwnProfile>();
-      if (error || !data || data.id !== userId) throw new Error();
+      if (error) throw new Error();
+      if (!data || data.id !== userId) {
+        if (revision === this.revision) this.profileError.set(LOGIN_MESSAGES.unauthorized);
+        return;
+      }
       if (revision === this.revision) this.currentProfile.set(data);
     } catch {
       if (revision === this.revision) {
-        this.profileError.set('Não foi possível carregar seu perfil.');
+        this.profileError.set(LOGIN_MESSAGES.verification);
       }
     }
   }

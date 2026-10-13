@@ -1,4 +1,4 @@
-<a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+<a class="skip-link" href="#conteudo" (click)="$event.preventDefault(); mainContent.focus()">Pular para o conteúdo</a>
 <aside class="sidebar" (pointerenter)="previewSidebar($event)" (pointerleave)="leaveSidebar()"
   (focusin)="focusSidebar($event)" (focusout)="blurSidebar($event)">
   <a
@@ -67,7 +67,7 @@
       }}</span>
     </div>
   </header>
-  <main id="conteudo" tabindex="-1">
+  <main #mainContent id="conteudo" tabindex="-1">
     @if (auth.profileError()) {
       <p class="feedback error" role="alert">{{ auth.profileError() }}</p>
     }

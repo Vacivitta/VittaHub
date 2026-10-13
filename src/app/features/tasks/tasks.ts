@@ -103,6 +103,7 @@ import { Icon } from '../../shared/icon';
     }
   `,
   styles: `
+    :host { --text-muted: #617269; }
     .attention-filters {
       display: flex;
       flex-wrap: wrap;
