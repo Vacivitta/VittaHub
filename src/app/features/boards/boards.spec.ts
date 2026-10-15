@@ -100,6 +100,8 @@ describe('Boards', () => {
     list.mockResolvedValue([]);
     const fixture = await render();
     expect(fixture.nativeElement.textContent).toContain('Nenhum quadro disponível');
+    expect(fixture.nativeElement.textContent).toContain('Peça a um administrador');
+    expect(fixture.nativeElement.textContent).not.toContain('Crie seu primeiro quadro');
     expect(fixture.nativeElement.querySelectorAll('.board-tile').length).toBe(0);
     expect(fixture.nativeElement.querySelector('button')).toBeNull();
   });
@@ -223,6 +225,7 @@ describe('Boards', () => {
     const fixture = await render();
     const cta = fixture.nativeElement.querySelector('.boards-state button') as HTMLButtonElement;
     expect(cta.textContent).toContain('Criar primeiro quadro');
+    expect(fixture.nativeElement.textContent).toContain('Crie seu primeiro quadro');
     cta.click();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();

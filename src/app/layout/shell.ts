@@ -6,6 +6,7 @@ import { AuthService } from '../core/auth/auth.service';
 import { Icon, IconName } from '../shared/icon';
 import { RequestsService } from '../features/requests/requests.service';
 import { DecisionBadge } from '../features/requests/decision-badge';
+import { environment } from '../../environments/environment';
 
 @Component({
   host: {
@@ -17,6 +18,9 @@ import { DecisionBadge } from '../features/requests/decision-badge';
   styleUrl: './shell.scss',
 })
 export class Shell {
+  // Existing ignored local configurations may not yet include the label.
+  readonly environmentLabel = (environment as { environmentLabel?: string }).environmentLabel
+    ?? 'Ambiente local';
   readonly auth = inject(AuthService);
   readonly requests = inject(RequestsService);
   constructor() {

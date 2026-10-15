@@ -206,6 +206,41 @@ describe('Requests central', () => {
     expect(h.routeNativeElement!.textContent).toContain('Nenhuma solicitação aguardando retorno');
   });
 
+  it('announces manual refresh completion, prevents duplicate clicks and retains focus', async () => {
+    const h = await render();
+    const service = TestBed.inject(RequestsService);
+    let complete!: (value: { data: RequestItem[]; error: null }) => void;
+    rpc.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    rpc.mockClear();
+    const button = h.routeNativeElement!.querySelector('button') as HTMLButtonElement;
+    button.focus();
+    button.click();
+    h.detectChanges();
+    expect(button.textContent).toContain('Atualizando');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(button);
+    button.click();
+    expect(rpc).toHaveBeenCalledTimes(1);
+    complete({ data: [], error: null });
+    await vi.waitFor(() => expect(service.loading()).toBe(false));
+    await h.fixture.whenStable();
+    h.detectChanges();
+    expect(h.routeNativeElement!.textContent).toContain('Solicitações atualizadas.');
+    expect(button.getAttribute('aria-disabled')).toBe('false');
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('shows a comprehensible error without reporting success after manual refresh fails', async () => {
+    const h = await render();
+    rpc.mockRejectedValueOnce(new Error('sensitive details'));
+    (h.routeNativeElement!.querySelector('button') as HTMLButtonElement).click();
+    await h.fixture.whenStable();
+    h.detectChanges();
+    expect(h.routeNativeElement!.querySelector('[role="alert"]')?.textContent).toContain('Tente novamente');
+    expect(h.routeNativeElement!.textContent).not.toContain('Solicitações atualizadas.');
+    expect(h.routeNativeElement!.textContent).not.toContain('sensitive details');
+  });
+
   it('shows a safe loading error with retry instead of false empty messages', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'secret' } });
     const h = await render();

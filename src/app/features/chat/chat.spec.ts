@@ -141,6 +141,17 @@ describe('Chat', () => {
     return fixture;
   }
 
+  it.each(['membro', 'gestor', 'administrador'] as const)('guides %s through available actions when conversations are empty', async (role) => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role });
+    listMyConversations.mockResolvedValue([]);
+    const fixture = await render();
+    const panel = fixture.nativeElement.querySelector('.message-panel') as HTMLElement;
+    expect(panel.textContent).toContain('Nenhuma conversa disponível');
+    expect(panel.textContent).toContain('Nova conversa');
+    expect(panel.textContent).not.toContain('Selecione uma conversa');
+    expect(panel.textContent?.includes('Novo grupo')).toBe(role !== 'membro');
+  });
+
   async function openFirst(fixture: ComponentFixture<Chat>): Promise<void> {
     (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('.conversation')!

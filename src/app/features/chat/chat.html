@@ -242,8 +242,21 @@
     @if (!selected()) {
       <div class="conversation-feedback" role="status">
         <app-icon name="chat" />
-        <h2>Selecione uma conversa</h2>
-        <p>Escolha uma conversa existente ou inicie uma nova.</p>
+        @if (listLoading()) {
+          <h2>Carregando conversas…</h2>
+        } @else if (listError()) {
+          <h2>Conversas indisponíveis</h2>
+          <p>Use “Tentar novamente” na lista de conversas para carregar suas conversas.</p>
+        } @else if (conversations().length === 0) {
+          <h2>Nenhuma conversa disponível</h2>
+          <p>Use “Nova conversa” para escolher uma pessoa e iniciar uma conversa individual.</p>
+          @if (canCreateGroup()) {
+            <p>Você também pode usar “Novo grupo” para conversar com várias pessoas.</p>
+          }
+        } @else {
+          <h2>Selecione uma conversa</h2>
+          <p>Escolha uma conversa na lista ou use “Nova conversa” para iniciar uma conversa individual.</p>
+        }
       </div>
     } @else if (conversationLoading()) {
       <div class="conversation-feedback" role="status">Carregando histórico…</div>

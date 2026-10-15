@@ -77,11 +77,13 @@
         <div class="boards-state" role="status">
           @if (boards().length === 0) {
             <h2>Nenhum quadro disponível.</h2>
-            <p>Você ainda não participa de nenhum quadro.</p>
             @if (canCreate()) {
+              <p>Crie seu primeiro quadro ou peça a um administrador de quadro ou do sistema para adicionar você a um quadro existente.</p>
               <button class="button primary" type="button" (click)="openCreateForm()">
                 <app-icon name="plus" /> Criar primeiro quadro
               </button>
+            } @else {
+              <p>Peça a um administrador de quadro ou do sistema para adicionar você ao quadro de que precisa.</p>
             }
           } @else {
             <h2>Nenhum quadro encontrado.</h2>

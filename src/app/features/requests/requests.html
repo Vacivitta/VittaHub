@@ -3,7 +3,10 @@
   description="Suas decisões e os pedidos que aguardam retorno."
   eyebrow="Acompanhamento"
 />
-<button type="button" (click)="service.refresh()" [disabled]="service.loading()">Atualizar</button>
+<button type="button" (click)="refresh()" [attr.aria-disabled]="service.loading() || refreshing()"
+  [attr.aria-busy]="service.loading() || refreshing()">
+  {{ service.loading() || refreshing() ? 'Atualizando…' : 'Atualizar' }}
+</button>
 @if (feedback(); as result) {
   <p class="note" role="status">
     {{ result.message }} <a [routerLink]="['/pendencias', result.taskId]" [state]="{ taskOrigin: 'requests' }">Abrir pendência</a>
@@ -12,9 +15,10 @@
 @if (service.loading()) {
   <p role="status">Atualizando solicitações…</p>
 }
+<p class="note" role="status" aria-atomic="true">{{ refreshStatus() }}</p>
 @if (service.error()) {
   <p role="alert">{{ service.error() }}</p>
-  <button type="button" (click)="service.refresh()">Tentar novamente</button>
+  <button type="button" (click)="refresh()" [attr.aria-disabled]="service.loading() || refreshing()">Tentar novamente</button>
 }
 @for (area of ['decide', 'waiting']; track area) {
   <section [attr.aria-labelledby]="'requests-' + area" [attr.aria-busy]="service.loading()">

@@ -21,7 +21,11 @@ if (!/^sb_publishable_[A-Za-z0-9_-]+$/.test(supabasePublicKey)) {
   throw new Error('SUPABASE_PUBLISHABLE_KEY deve ser uma chave pública sb_publishable_.');
 }
 
-const environment = { supabaseUrl: url.origin, supabasePublicKey };
+const environment = {
+  environmentLabel: 'Ambiente de homologação',
+  supabaseUrl: url.origin,
+  supabasePublicKey,
+};
 await writeFile(
   new URL('../src/environments/environment.production.local.ts', import.meta.url),
   '// Generated for homologation. Public values only; ignored by Git.\n' +

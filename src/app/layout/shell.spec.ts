@@ -4,6 +4,7 @@ import { provideRouter, Router } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { Shell } from './shell';
 import { RequestsService } from '../features/requests/requests.service';
+import { environment } from '../../environments/environment';
 
 @Component({
   template: `<button type="button" (click)="filter.set('atrasadas')">Filtrar</button>
@@ -46,6 +47,31 @@ describe('Shell sidebar', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     localStorage.removeItem(key);
+  });
+
+  it.each([
+    ['Ambiente local', 'Ambiente local'],
+    ['Ambiente de homologação', 'Ambiente de homologação'],
+    [undefined, 'Ambiente local'],
+  ])('renders the configured environment %s in the footer', (label, expected) => {
+    // Set the configuration before TestBed constructs Shell; no module mocking is needed.
+    const original = Object.getOwnPropertyDescriptor(environment, 'environmentLabel');
+    try {
+      Object.defineProperty(environment, 'environmentLabel', {
+        configurable: true,
+        value: label,
+      });
+      const fixture = TestBed.createComponent(Shell);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.environmentLabel).toBe(expected);
+      expect(fixture.nativeElement.querySelector('.workspace-footer').textContent.trim()).toBe(expected);
+    } finally {
+      if (original) {
+        Object.defineProperty(environment, 'environmentLabel', original);
+      } else {
+        Reflect.deleteProperty(environment, 'environmentLabel');
+      }
+    }
   });
 
   it.each([
