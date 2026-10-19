@@ -30,7 +30,6 @@
         <app-icon name="plus" /> Novo quadro
       </button>
     }
-  </div>
   @if (loading()) {
     <div class="boards-state" role="status">Carregando quadros…</div>
   } @else if (error()) {
@@ -112,7 +111,7 @@
     aria-modal="true"
     aria-labelledby="new-board-title"
     cdkTrapFocus
-    [cdkTrapFocusAutoCapture]="true"
+    appFocusRegion=".boards-toolbar .button.primary"
     (keydown.escape)="closeCreateForm()"
   >
     <header class="drawer-header">
@@ -130,7 +129,7 @@
         <app-icon name="close" />
       </button>
     </header>
-    <form class="task-form" [formGroup]="form" (ngSubmit)="createBoard()">
+    <form appFocusInvalid class="task-form" [formGroup]="form" (ngSubmit)="createBoard()">
       <label
         >Nome do quadro<input
           formControlName="title"

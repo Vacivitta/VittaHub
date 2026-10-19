@@ -92,7 +92,13 @@ import { TaskEditing } from './task-editing';
             <dl class="task-detail-grid">
               <div>
                 <dt>Responsável</dt>
-                <dd>{{ current.awaiting_reassignment ? 'Sem responsável ativo' : assigneeName() || 'Nome indisponível' }}</dd>
+                <dd [attr.aria-busy]="assigneesStatus() === 'loading'">
+                  @if (current.awaiting_reassignment) { Sem responsável ativo }
+                  @else if (assigneeName()) { {{ assigneeName() }} }
+                  @else if (assigneesStatus() === 'loading') { <span role="status">Carregando responsável…</span> }
+                  @else if (assigneesStatus() === 'error') { <span role="alert">Não foi possível carregar o nome do responsável.</span> }
+                  @else { Nome indisponível }
+                </dd>
               </div>
               <div>
                 <dt>Prazo</dt>
@@ -270,8 +276,12 @@ import { TaskEditing } from './task-editing';
         </section>
         </div>
         <div class="task-history-slot">
-        <aside class="panel task-history-panel" aria-label="Histórico da pendência">
+        <aside class="panel task-history-panel" aria-label="Histórico da pendência" [attr.aria-busy]="historyStatus() === 'loading'">
           <h2>Histórico</h2>
+          @if (historyStatus() === 'loading') {
+            <p class="small muted" role="status">{{ history().length ? 'Atualizando histórico…' : 'Carregando histórico…' }}</p>
+          }
+          @if (historyStatus() === 'error') { <p class="small muted" role="alert">{{ historyError() }}</p> }
           @for (event of visibleHistory(); track event.id) {
             <div class="history-entry">
               <strong>{{ historyContent(event) }}</strong>
@@ -279,7 +289,7 @@ import { TaskEditing } from './task-editing';
               <span class="small muted">{{ event.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
             </div>
           } @empty {
-            <p class="small muted">{{ historyError() || 'Nenhum evento registrado.' }}</p>
+            @if (historyStatus() === 'loaded') { <p class="small muted">Nenhum evento registrado.</p> }
           }
           @if (sortedHistory().length > 4) {
             <button #historyTrigger class="button tertiary history-toggle" type="button"
@@ -387,6 +397,9 @@ export class TaskDetailPage {
   private readonly params = toSignal(inject(ActivatedRoute).paramMap);
   private readonly attempt = signal(0);
   private readonly assignees = signal<BoardAssignee[]>([]);
+  readonly assigneesStatus = signal<'loading' | 'loaded' | 'error'>('loading');
+  readonly historyStatus = signal<'loading' | 'loaded' | 'error'>('loading');
+  private historyRequest = 0;
   readonly history = signal<TaskEvent[]>([]);
   readonly sortedHistory = computed(() => [...this.history()].sort((a, b) =>
     Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)));
@@ -466,6 +479,9 @@ export class TaskDetailPage {
       this.moveFeedback.set('');
       this.moveError.set('');
       this.assignees.set([]);
+      this.assigneesStatus.set('loading');
+      this.historyStatus.set('loading');
+      this.historyRequest++;
       this.history.set([]);
       this.comments.set([]);
       this.historyError.set('');
@@ -543,28 +559,39 @@ export class TaskDetailPage {
   }
 
   private async loadAssignees(boardId: string, isActive: () => boolean): Promise<void> {
+    if (!isActive()) return;
+    this.assigneesStatus.set('loading');
     try {
       const assignees = await this.service.listAssignees(boardId);
-      if (isActive()) this.assignees.set(assignees);
+      if (isActive()) {
+        this.assignees.set(assignees);
+        this.assigneesStatus.set('loaded');
+      }
     } catch {
       // Related names are cosmetic and must not broaden access or hide the task.
+      if (isActive()) this.assigneesStatus.set('error');
     }
   }
 
   private async loadHistory(taskId: string, isActive: () => boolean = () => true): Promise<void> {
+    if (!isActive() || this.task()?.id !== taskId) return;
+    const request = ++this.historyRequest;
     const userId = this.auth.session()?.user.id;
     const current = () =>
-      isActive() && this.task()?.id === taskId && this.auth.session()?.user.id === userId;
+      request === this.historyRequest && isActive() && this.task()?.id === taskId && this.auth.session()?.user.id === userId;
+    this.historyStatus.set('loading');
+    this.historyError.set('');
     try {
       const history = await this.service.listHistory(taskId);
       if (current()) {
         this.history.set(history);
         this.historyError.set('');
+        this.historyStatus.set('loaded');
       }
     } catch {
       if (current()) {
-        this.history.set([]);
         this.historyError.set('Histórico indisponível.');
+        this.historyStatus.set('error');
       }
     }
   }

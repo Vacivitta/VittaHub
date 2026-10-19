@@ -1,4 +1,4 @@
-import { Component, ElementRef, effect, inject, input, output, signal, viewChild } from '@angular/core';
+import { afterRenderEffect, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { AuthService } from '../../core/auth/auth.service';
 import { TaskDetail } from './task-detail';
 import { TasksService } from './tasks.service';
@@ -22,13 +22,13 @@ import { TasksService } from './tasks.service';
       <button type="button" (click)="retryPermission()">Tentar verificar edição novamente</button>
     }
     @if (allowed()) {
-      <button class="button secondary" type="button" (click)="open()" [disabled]="busy()">Editar pendência</button>
+      <button #trigger class="button secondary" type="button" (click)="open()" [disabled]="busy() || permissionLoading()">Editar pendência</button>
     }
-    <dialog #modal aria-labelledby="edit-task-title" (cancel)="cancel($event)">
+    <dialog #modal aria-labelledby="edit-task-title" (cancel)="cancel($event)" (close)="restoreFocus.set(true)">
       <form (submit)="$event.preventDefault(); submit()">
         <h2 id="edit-task-title">Editar pendência</h2>
         <label>Título
-          <input required [value]="title()" (input)="title.set($any($event.target).value)" [disabled]="busy()" />
+          <input #titleField required [attr.aria-invalid]="!!error() && !title().trim()" aria-describedby="edit-task-error" [value]="title()" (input)="title.set($any($event.target).value)" [disabled]="busy()" />
         </label>
         <label>Descrição
           <textarea rows="4" [value]="description()" (input)="description.set($any($event.target).value)" [disabled]="busy()"></textarea>
@@ -40,9 +40,9 @@ import { TasksService } from './tasks.service';
             <option value="private">Privada</option>
           </select>
         </label>
-        @if (error()) { <p role="alert">{{ error() }}</p> }
+        @if (error()) { <p id="edit-task-error" role="alert">{{ error() }}</p> }
         <div class="row">
-          <button type="submit" [disabled]="busy() || !title().trim()">{{ busy() ? 'Salvando…' : 'Salvar alterações' }}</button>
+          <button type="submit" [disabled]="busy()">{{ busy() ? 'Salvando…' : 'Salvar alterações' }}</button>
           <button type="button" (click)="close()" [disabled]="busy()">Cancelar</button>
         </div>
       </form>
@@ -50,6 +50,7 @@ import { TasksService } from './tasks.service';
   `,
 })
 export class TaskEditing {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly task = input.required<TaskDetail>();
   readonly changed = output<string>();
   readonly allowed = signal(false);
@@ -62,51 +63,71 @@ export class TaskEditing {
   readonly isPrivate = signal(false);
   readonly error = signal('');
   private readonly modal = viewChild<ElementRef<HTMLDialogElement>>('modal');
+  private readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
+  private readonly titleField = viewChild<ElementRef<HTMLInputElement>>('titleField');
+  readonly restoreFocus = signal(false);
+  private permissionTaskId = '';
   private readonly service = inject(TasksService);
   private readonly auth = inject(AuthService);
 
   constructor() {
+    afterRenderEffect(() => {
+      if (this.restoreFocus() && !this.busy() && !this.permissionLoading()) {
+        const target = this.trigger()?.nativeElement ?? this.element.nativeElement;
+        if (!this.trigger()) target.setAttribute('tabindex', '-1');
+        target.focus();
+        this.restoreFocus.set(false);
+      }
+    });
     effect((cleanup) => {
       const task = this.task();
       const userId = this.auth.session()?.user.id;
       this.permissionAttempt();
       let active = true;
       cleanup(() => { active = false; });
-      this.allowed.set(false);
+      // Revalidation temporarily disables the opener; restore it only if it held focus.
+      if (this.element.nativeElement.ownerDocument.activeElement === untracked(() => this.trigger()?.nativeElement))
+        this.restoreFocus.set(true);
+      if (this.permissionTaskId !== task.id) this.allowed.set(false);
+      this.permissionTaskId = task.id;
       this.permissionLoading.set(false);
       this.permissionError.set('');
-      this.modal()?.nativeElement.close();
+      if (this.modal()?.nativeElement.open) this.modal()?.nativeElement.close();
       if (userId && task.business_state !== 'concluido') {
         this.permissionLoading.set(true);
         void this.service.canEdit(task.id).then((allowed) => {
-          if (active) this.allowed.set(allowed);
+          if (active) { this.allowed.set(allowed); this.permissionLoading.set(false); }
         }).catch(() => {
-          if (active) this.permissionError.set('Não foi possível verificar a permissão de edição. Tente novamente.');
+          if (active) {
+            this.allowed.set(false);
+            this.permissionError.set('Não foi possível verificar a permissão de edição. Tente novamente.');
+          }
         }).finally(() => {
           if (active) this.permissionLoading.set(false);
         });
-      }
+      } else this.allowed.set(false);
     });
   }
 
   retryPermission(): void { this.permissionAttempt.update((attempt) => attempt + 1); }
 
   open(): void {
-    if (!this.allowed() || this.busy()) return;
+    if (!this.allowed() || this.busy() || this.permissionLoading()) return;
     const task = this.task();
     this.title.set(task.title);
     this.description.set(task.description ?? '');
     this.isPrivate.set(task.is_private);
     this.error.set('');
     this.modal()?.nativeElement.showModal();
+    this.titleField()?.nativeElement.focus();
   }
 
-  close(): void { if (!this.busy()) this.modal()?.nativeElement.close(); }
-  cancel(event: Event): void { if (this.busy()) event.preventDefault(); }
+  close(): void { if (!this.busy()) { this.modal()?.nativeElement.close(); this.restoreFocus.set(true); } }
+  cancel(event: Event): void { event.preventDefault(); this.close(); }
 
   async submit(): Promise<void> {
-    if (!this.allowed() || this.busy()) return;
-    if (!this.title().trim()) { this.error.set('Informe o título da pendência.'); return; }
+    if (!this.allowed() || this.busy() || this.permissionLoading()) return;
+    if (!this.title().trim()) { this.error.set('Informe o título da pendência.'); this.titleField()?.nativeElement.focus(); return; }
     const taskId = this.task().id;
     const userId = this.auth.session()?.user.id;
     this.busy.set(true);
@@ -115,6 +136,7 @@ export class TaskEditing {
       const edited = await this.service.edit(taskId, this.title(), this.description(), this.isPrivate());
       if (this.task().id !== taskId || this.auth.session()?.user.id !== userId) return;
       this.modal()?.nativeElement.close();
+      this.restoreFocus.set(true);
       this.changed.emit(edited ? 'Pendência editada com sucesso.' : 'Nenhuma alteração para salvar.');
     } catch {
       if (this.task().id === taskId && this.auth.session()?.user.id === userId)

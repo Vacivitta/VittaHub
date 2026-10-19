@@ -1,5 +1,7 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { FocusRegion, FocusInvalid } from '../../shared/form-focus';
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -25,6 +27,7 @@ import { BoardsService } from './boards.service';
     @media (max-width: 600px) { .local-admin-notice { max-width: none; width: 100%; margin-bottom: 16px; } }
   `,
   imports: [
+    CdkTrapFocus, FocusRegion, FocusInvalid,
     RouterLink,
     PageHeading,
     ReactiveFormsModule,
@@ -63,13 +66,13 @@ import { BoardsService } from './boards.service';
             <button
               class="button primary"
               type="button"
-              (click)="openForm()"
+              id="new-task-trigger" (click)="openForm()"
               [disabled]="!current.columns.length || !assignees().length"
             >
               <app-icon name="plus" /> Nova pendência
             </button>
             @if (canManageColumns() && current.columns.length) {
-              <button class="button secondary" type="button" (click)="openNewColumn()">
+              <button class="button secondary" type="button" id="new-column-trigger" (click)="openNewColumn()">
                 <app-icon name="plus" /> Nova coluna
               </button>
             }
@@ -125,14 +128,13 @@ import { BoardsService } from './boards.service';
         </div>
       </div>
       @if (newColumnOpen() && current.columns.length) {
-        <div class="header-column-form panel">
+        <div class="header-column-form panel" appFocusRegion="#new-column-trigger" (keydown.escape)="closeNewColumn()">
           <label for="new-column-name">Nome da nova coluna</label>
           <input
-            id="new-column-name"
+            id="new-column-name" [attr.aria-invalid]="!!managementError() && !newColumnName().trim()" aria-describedby="management-error"
             [value]="newColumnName()"
             (input)="newColumnName.set($any($event.target).value)"
             (keydown.enter)="createColumn()"
-            (keydown.escape)="closeNewColumn()"
             maxlength="120"
             placeholder="Ex.: Em revisão"
           />
@@ -148,12 +150,12 @@ import { BoardsService } from './boards.service';
         <p class="feedback success" role="status">{{ managementFeedback() }}</p>
       }
       @if (managementError()) {
-        <p class="feedback error" role="alert">{{ managementError() }}</p>
+        <p id="management-error" class="feedback error" role="alert">{{ managementError() }}</p>
       }
 
       @if (editBoardOpen()) {
         <button class="dialog-backdrop" type="button" aria-label="Fechar edição do quadro" (click)="closeEditBoard()"></button>
-        <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="edit-board-title">
+        <section class="dialog-card" cdkTrapFocus appFocusRegion=".manage-board-button" (keydown.escape)="closeEditBoard()" role="dialog" aria-modal="true" aria-labelledby="edit-board-title">
           <header class="dialog-header">
             <div>
               <h2 id="edit-board-title">Editar quadro</h2>
@@ -163,11 +165,11 @@ import { BoardsService } from './boards.service';
               <app-icon name="close" />
             </button>
           </header>
-          <form class="task-form" [formGroup]="editBoardForm" (ngSubmit)="saveBoard()">
+          <form appFocusInvalid class="task-form" [formGroup]="editBoardForm" (ngSubmit)="saveBoard()">
             <label
-              >Nome do quadro<input formControlName="title" maxlength="200" />
+              >Nome do quadro<input [attr.aria-invalid]="editBoardForm.controls.title.touched && editBoardForm.controls.title.invalid" aria-describedby="edit-board-error" formControlName="title" maxlength="200" />
               @if (editBoardForm.controls.title.touched && editBoardForm.controls.title.invalid) {
-                <span class="field-error">Informe o nome do quadro.</span>
+                <span id="edit-board-error" class="field-error">Informe o nome do quadro.</span>
               }
             </label>
             <label
@@ -186,17 +188,17 @@ import { BoardsService } from './boards.service';
 
       @if (confirmation(); as pendingConfirmation) {
         <button class="dialog-backdrop" type="button" aria-label="Cancelar exclusão" (click)="cancelConfirmation()"></button>
-        <section class="dialog-card confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description">
+        <section class="dialog-card confirm-dialog" cdkTrapFocus [appFocusRegion]="pendingConfirmation.kind === 'board' ? '.manage-board-button' : '#column-menu-' + pendingConfirmation.column?.id + ', #new-column-trigger'" (keydown.escape)="cancelConfirmation()" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description">
           <h2 id="delete-title">
-            {{ pendingConfirmation.kind === 'board' ? 'Excluir quadro?' : 'Excluir coluna?' }}
+            Excluir {{ pendingConfirmation.kind === 'board' ? 'quadro' : 'coluna' }} “{{ pendingConfirmation.kind === 'board' ? current.title : pendingConfirmation.column?.title }}”?
           </h2>
           <p id="delete-description" class="muted">
             {{ pendingConfirmation.kind === 'board'
-              ? 'Esta ação removerá permanentemente este quadro e suas colunas vazias. Ela não poderá ser desfeita.'
-              : 'Esta ação removerá a coluna do quadro e não poderá ser desfeita.' }}
+              ? 'Só é possível excluir um quadro sem pendências, inclusive concluídas. A exclusão remove permanentemente o quadro, suas colunas vazias e os vínculos de participação. Esta ação não poderá ser desfeita.'
+              : 'Só é possível excluir uma coluna sem pendências, inclusive concluídas. Mova as pendências para outra coluna deste quadro antes de excluir. A exclusão é permanente e não poderá ser desfeita.' }}
           </p>
           <div class="dialog-actions">
-            <button class="button tertiary" type="button" (click)="cancelConfirmation()" [disabled]="deleting()">Cancelar</button>
+            <button data-focus-initial class="button tertiary" type="button" (click)="cancelConfirmation()" [disabled]="deleting()">Cancelar</button>
             <button class="button danger" type="button" (click)="confirmDeletion()" [disabled]="deleting()">
               {{ deleting() ? 'Excluindo…' : (pendingConfirmation.kind === 'board' ? 'Excluir quadro' : 'Excluir coluna') }}
             </button>
@@ -212,7 +214,7 @@ import { BoardsService } from './boards.service';
           (click)="closeForm()"
         ></button>
         <section
-          class="task-drawer"
+          class="task-drawer" cdkTrapFocus appFocusRegion="#new-task-trigger" (keydown.escape)="closeForm()"
           aria-label="Nova pendência"
           role="dialog"
           aria-modal="true"
@@ -233,18 +235,18 @@ import { BoardsService } from './boards.service';
               <app-icon name="close" />
             </button>
           </header>
-          <form class="task-form" [formGroup]="form" (ngSubmit)="createTask()">
+          <form appFocusInvalid class="task-form" [formGroup]="form" (ngSubmit)="createTask()">
             <fieldset class="form-section">
               <legend>INFORMAÇÕES</legend>
               <label
                 >Título
                 <input
-                  formControlName="title"
+                  formControlName="title" [attr.aria-invalid]="form.controls.title.touched && form.controls.title.invalid" aria-describedby="task-title-error"
                   maxlength="200"
                   placeholder="Digite o título da pendência"
                 />
                 @if (form.controls.title.touched && form.controls.title.invalid) {
-                  <span class="field-error">Informe um título.</span>
+                  <span id="task-title-error" class="field-error">Informe um título.</span>
                 }
               </label>
               <label
@@ -260,7 +262,7 @@ import { BoardsService } from './boards.service';
               <legend>ATRIBUIÇÃO</legend>
               <label
                 >Responsável
-                <select formControlName="assigneeId" (change)="assigneeChanged()">
+                <select formControlName="assigneeId" [attr.aria-invalid]="form.controls.assigneeId.touched && form.controls.assigneeId.invalid" aria-describedby="task-assigneeId-error" (change)="assigneeChanged()">
                   <option value="">Selecione um responsável</option>
                   @for (person of assignees(); track person.id) {
                     <option [value]="person.id">
@@ -269,27 +271,27 @@ import { BoardsService } from './boards.service';
                   }
                 </select>
                 @if (form.controls.assigneeId.touched && form.controls.assigneeId.invalid) {
-                  <span class="field-error">Selecione um responsável.</span>
+                  <span id="task-assigneeId-error" class="field-error">Selecione um responsável.</span>
                 }
               </label>
               <div class="field-row">
                 <label
                   >Prazo
-                  <input type="datetime-local" formControlName="dueAt" />
+                  <input type="datetime-local" formControlName="dueAt" [attr.aria-invalid]="form.controls.dueAt.touched && form.controls.dueAt.invalid" aria-describedby="task-dueAt-error" />
                   @if (form.controls.dueAt.touched && form.controls.dueAt.invalid) {
-                    <span class="field-error">Informe um prazo.</span>
+                    <span id="task-dueAt-error" class="field-error">Informe um prazo.</span>
                   }
                 </label>
                 <label
                   >Coluna
-                  <select formControlName="columnId">
+                  <select formControlName="columnId" [attr.aria-invalid]="form.controls.columnId.touched && form.controls.columnId.invalid" aria-describedby="task-columnId-error">
                     <option value="">Selecione</option>
                     @for (column of current.columns; track column.id) {
                       <option [value]="column.id">{{ column.title }}</option>
                     }
                   </select>
                   @if (form.controls.columnId.touched && form.controls.columnId.invalid) {
-                    <span class="field-error">Selecione uma coluna.</span>
+                    <span id="task-columnId-error" class="field-error">Selecione uma coluna.</span>
                   }
                 </label>
               </div>
@@ -396,7 +398,7 @@ import { BoardsService } from './boards.service';
                   <span class="column-count">{{ tasksForColumn(column.id).length }}</span>
                   @if (canManageColumns()) {
                     <button
-                      class="column-menu"
+                      class="column-menu" [id]="'column-menu-' + column.id"
                       type="button"
                       (click)="toggleColumnMenu(column.id)"
                       aria-label="Ações da coluna"
@@ -468,10 +470,10 @@ import { BoardsService } from './boards.service';
           <p>Crie a primeira coluna para começar a organizar as pendências.</p>
           @if (canManageColumns()) {
             @if (newColumnOpen()) {
-              <div class="first-column-form">
+              <div class="first-column-form" appFocusRegion="#new-column-trigger" (keydown.escape)="closeNewColumn()">
                 <label for="first-column-name">Nome da primeira coluna</label
                 ><input
-                  id="first-column-name"
+                  id="first-column-name" [attr.aria-invalid]="!!managementError() && !newColumnName().trim()" aria-describedby="management-error"
                   [value]="newColumnName()"
                   (input)="newColumnName.set($any($event.target).value)"
                   (keydown.enter)="createColumn()"
@@ -484,9 +486,10 @@ import { BoardsService } from './boards.service';
                 >
                   Criar coluna
                 </button>
+                <button type="button" (click)="closeNewColumn()" [disabled]="columnBusy()">Cancelar</button>
               </div>
             } @else {
-              <button class="button primary" type="button" (click)="openNewColumn()">
+              <button class="button primary" type="button" id="new-column-trigger" (click)="openNewColumn()">
                 <app-icon name="plus" /> Criar primeira coluna
               </button>
             }
@@ -515,6 +518,7 @@ import { BoardsService } from './boards.service';
   `,
 })
 export class BoardPage {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly boardsService = inject(BoardsService);
   private readonly tasksService = inject(TasksService);
   private readonly auth = inject(AuthService);
@@ -598,8 +602,11 @@ export class BoardPage {
       this.columnMenuId.set(null);
       this.editBoardOpen.set(false);
       this.confirmation.set(null);
-      this.closeNewColumn();
-      this.cancelRename();
+      // Reset editors without making their busy state a board-loading dependency.
+      untracked(() => {
+        this.closeNewColumn();
+        this.cancelRename();
+      });
       this.formOpen.set(false);
       void this.load(id, () => active && this.auth.session()?.user.id === userId);
     });
@@ -830,7 +837,7 @@ export class BoardPage {
       } else {
         await this.boardsService.deleteBoard(board.id);
         this.confirmation.set(null);
-        await this.router.navigateByUrl('/quadros');
+        await this.router.navigateByUrl('/quadros', { state: { focusBoardList: true } });
       }
     } catch (error) {
       this.confirmation.set(null);
@@ -838,8 +845,8 @@ export class BoardPage {
         error instanceof Error
           ? error.message
           : confirmation.kind === 'column'
-            ? 'Esta coluna possui pendências. Mova as pendências antes de excluí-la.'
-            : 'Não é possível excluir este quadro enquanto houver pendências vinculadas.',
+            ? 'Não foi possível confirmar a exclusão da coluna. Atualize a página para conferir o resultado.'
+            : 'Não foi possível confirmar a exclusão do quadro. Atualize a página para conferir o resultado.',
       );
     } finally {
       this.deleting.set(false);
@@ -868,6 +875,7 @@ export class BoardPage {
     if (!board || !this.canManageColumns() || this.columnBusy()) return;
     if (!name) {
       this.managementError.set('Informe o nome da coluna.');
+      this.element.nativeElement.querySelector<HTMLInputElement>('#new-column-name, #first-column-name')?.focus();
       return;
     }
     this.columnBusy.set(true);

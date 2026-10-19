@@ -190,9 +190,10 @@ export class BoardsService {
       const { error } = await this.client.rpc('delete_board_column', {
         p_column_id: columnId,
       });
-      if (error || this.auth.session()?.user.id !== userId) throw new Error();
-    } catch {
-      throw new Error('Esta coluna possui pendências. Mova as pendências antes de excluí-la.');
+      if (this.auth.session()?.user.id !== userId) throw { code: '42501' };
+      if (error) throw error;
+    } catch (error) {
+      throw this.deletionError(error, 'coluna');
     }
   }
 
@@ -200,10 +201,21 @@ export class BoardsService {
     const userId = await this.authenticatedUser();
     try {
       const { error } = await this.client.rpc('delete_board', { p_board_id: boardId });
-      if (error || this.auth.session()?.user.id !== userId) throw new Error();
-    } catch {
-      throw new Error('Não é possível excluir este quadro enquanto houver pendências vinculadas.');
+      if (this.auth.session()?.user.id !== userId) throw { code: '42501' };
+      if (error) throw error;
+    } catch (error) {
+      throw this.deletionError(error, 'quadro');
     }
+  }
+
+  private deletionError(error: unknown, resource: 'quadro' | 'coluna'): Error {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
+    if (code === '23503') return new Error(resource === 'coluna'
+      ? 'Esta coluna possui pendências, inclusive possivelmente concluídas. Mova as pendências para outra coluna deste quadro antes de excluí-la.'
+      : 'Não é possível excluir este quadro enquanto houver pendências vinculadas, inclusive concluídas.');
+    if (code === '42501' || code === 'PGRST301' || code === 'PGRST303')
+      return new Error('Sua sessão ou permissão não permite esta exclusão. Atualize a página e verifique seu acesso.');
+    return new Error('Não foi possível confirmar a exclusão. Verifique sua conexão e atualize a página para conferir o resultado antes de tentar novamente.');
   }
 
   private async authenticatedUser(): Promise<string> {

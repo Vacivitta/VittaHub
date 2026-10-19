@@ -115,11 +115,71 @@ describe('BoardPage', () => {
     return harness;
   }
 
+  it('focuses task fields, the first invalid field and restores the opener on Escape', async () => {
+    const h = await render();
+    const root = h.routeNativeElement!;
+    const trigger = root.querySelector<HTMLButtonElement>('#new-task-trigger')!;
+    trigger.focus(); trigger.click(); h.detectChanges(); await h.fixture.whenStable();
+    const title = root.querySelector<HTMLInputElement>('[formControlName="title"]')!;
+    expect(document.activeElement).toBe(title);
+    const form = root.querySelector<HTMLFormElement>('.task-drawer form')!;
+    form.querySelector<HTMLButtonElement>('[type="submit"]')!.focus();
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    h.detectChanges(); await h.fixture.whenStable();
+    expect(document.activeElement).toBe(title);
+    expect(title.getAttribute('aria-invalid')).toBe('true');
+    title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    h.detectChanges(); await h.fixture.whenStable();
+    expect(root.querySelector('.task-drawer')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('focuses Cancel in deletion and returns to the stable management button', async () => {
+    canManageStructure.mockResolvedValue(true);
+    const h = await render();
+    const root = h.routeNativeElement!;
+    const trigger = root.querySelector<HTMLButtonElement>('.manage-board-button')!;
+    trigger.click(); h.detectChanges();
+    const item = root.querySelector<HTMLButtonElement>('.danger-item')!;
+    item.focus(); item.click(); h.detectChanges(); await h.fixture.whenStable();
+    const cancel = root.querySelector<HTMLButtonElement>('[data-focus-initial]')!;
+    expect(document.activeElement).toBe(cancel);
+    cancel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    h.detectChanges(); await h.fixture.whenStable();
+    expect(document.activeElement).toBe(trigger);
+    expect(deleteBoard).not.toHaveBeenCalled();
+  });
+
   it('keeps columns organizational even for column administrators', async () => {
     canManageColumns.mockResolvedValue(true);
     const harness = await render();
     expect(harness.routeNativeElement!.textContent).not.toContain('Estado vinculado');
     expect(harness.routeNativeElement!.querySelector('.column-state-field')).toBeNull();
+  });
+
+  it.each([true, false])('manages inline column focus (first column: %s)', async (first) => {
+    canManageColumns.mockResolvedValue(true);
+    if (first) getById.mockResolvedValue({ status: 'loaded', board: { ...board, columns: [] } });
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as BoardPage;
+    const root = h.routeNativeElement!;
+    let trigger = root.querySelector<HTMLButtonElement>('#new-column-trigger')!;
+    trigger.focus(); trigger.click(); h.detectChanges(); await h.fixture.whenStable();
+    const field = root.querySelector<HTMLInputElement>('#new-column-name, #first-column-name')!;
+    expect(document.activeElement).toBe(field);
+    await page.createColumn(); h.detectChanges();
+    expect(document.activeElement).toBe(field);
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    h.detectChanges(); await h.fixture.whenStable();
+    trigger = root.querySelector<HTMLButtonElement>('#new-column-trigger')!;
+    expect(document.activeElement).toBe(trigger);
+    trigger.click(); h.detectChanges(); await h.fixture.whenStable();
+    page.newColumnName.set('Nova'); await page.createColumn();
+    h.detectChanges(); await h.fixture.whenStable();
+    expect(document.activeElement).toBe(root.querySelector('#new-column-trigger'));
+    expect(page.board()?.columns.some(column => column.id === 'column-new' && column.title === 'Nova')).toBe(true);
+    expect(getById).toHaveBeenCalledExactlyOnceWith(id);
   });
 
   it('lets a local member admin manage columns but not the board', async () => {
@@ -443,7 +503,8 @@ describe('BoardPage', () => {
     page.requestDeleteColumn(page.board()!.columns[0]);
     harness.detectChanges();
     expect(deleteColumn).not.toHaveBeenCalled();
-    expect(harness.routeNativeElement?.textContent).toContain('Excluir coluna?');
+    expect(harness.routeNativeElement?.textContent).toContain('Excluir coluna “Entrada”?');
+    expect(harness.routeNativeElement?.textContent).toContain('inclusive concluídas');
     await page.confirmDeletion();
     harness.detectChanges();
     expect(deleteColumn).toHaveBeenCalledExactlyOnceWith('column-1');
@@ -462,10 +523,11 @@ describe('BoardPage', () => {
     page.requestDeleteBoard();
     harness.detectChanges();
     expect(deleteBoard).not.toHaveBeenCalled();
-    expect(harness.routeNativeElement?.textContent).toContain('Excluir quadro?');
+    expect(harness.routeNativeElement?.textContent).toContain('Excluir quadro “Quadro de Testes”?');
+    expect(harness.routeNativeElement?.textContent).toContain('vínculos de participação');
     await page.confirmDeletion();
     expect(deleteBoard).toHaveBeenCalledExactlyOnceWith(id);
-    expect(navigation).toHaveBeenCalledWith('/quadros');
+    expect(navigation).toHaveBeenCalledWith('/quadros', { state: { focusBoardList: true } });
   });
 
   it('shows a friendly error when a board still has tasks', async () => {

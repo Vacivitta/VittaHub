@@ -311,6 +311,18 @@ describe('TaskDetailPage', () => {
     expect(root.textContent).toContain('Pendência editada com sucesso.');
   });
 
+  it('restores editing focus after saving and rechecking permission', async () => {
+    canEdit.mockResolvedValue(true);
+    const h = await render();
+    const root = h.routeNativeElement!;
+    const trigger = root.querySelector<HTMLButtonElement>('app-task-editing > button')!;
+    trigger.focus(); trigger.click(); h.detectChanges();
+    expect(document.activeElement).toBe(root.querySelector('app-task-editing input'));
+    root.querySelector('app-task-editing form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await h.fixture.whenStable(); h.detectChanges(); await h.fixture.whenStable();
+    expect(document.activeElement).toBe(root.querySelector('app-task-editing > button'));
+  });
+
   it('recovers a failed capability lookup and displays editing for the creator after the async response', async () => {
     session.set({ user: { id: task.created_by } });
     canEdit.mockRejectedValueOnce(new Error('network failure'));
@@ -781,7 +793,68 @@ describe('TaskDetailPage', () => {
     expect(format('completed', { previous_due_at: previous }, 'Conclusão original')).toBe('Conclusão original');
     expect(format('postponement_requested', {}, 'Conteúdo original')).toBe('Conteúdo original');
   });
+  it('loads names and history independently without premature empty messages', async () => {
+    let resolveNames!: (value: unknown[]) => void;
+    let resolveHistory!: (value: unknown[]) => void;
+    listAssignees.mockReturnValue(new Promise(done => { resolveNames = done; }));
+    listHistory.mockReturnValue(new Promise(done => { resolveHistory = done; }));
+    const h = await render();
+    const root = h.routeNativeElement!;
+    expect(root.textContent).toContain('Carregando responsável');
+    expect(root.textContent).toContain('Carregando histórico');
+    expect(root.textContent).not.toContain('Nome indisponível');
+    expect(root.textContent).not.toContain('Nenhum evento registrado');
+    resolveHistory([]); await h.fixture.whenStable(); h.detectChanges();
+    expect(root.textContent).toContain('Nenhum evento registrado');
+    expect(root.textContent).toContain('Carregando responsável');
+    resolveNames([{ id: task.assignee_id, display_name: 'Nome carregado' }]);
+    await h.fixture.whenStable(); h.detectChanges();
+    expect(root.textContent).toContain('Nome carregado');
+    expect(root.textContent).not.toContain('Carregando responsável');
+  });
+
+  it('distinguishes related query failures from genuinely absent data', async () => {
+    listAssignees.mockRejectedValue(new Error('network'));
+    listHistory.mockRejectedValue(new Error('network'));
+    const h = await render();
+    expect(h.routeNativeElement!.textContent).toContain('Não foi possível carregar o nome');
+    expect(h.routeNativeElement!.textContent).toContain('Histórico indisponível');
+    expect(h.routeNativeElement!.textContent).not.toContain('Nenhum evento registrado');
+    listAssignees.mockResolvedValue([]); listHistory.mockResolvedValue([]);
+    (h.routeDebugElement!.componentInstance as TaskDetailPage).retry();
+    await h.fixture.whenStable(); h.detectChanges();
+    expect(h.routeNativeElement!.textContent).toContain('Nome indisponível');
+    expect(h.routeNativeElement!.textContent).toContain('Nenhum evento registrado');
+  });
+
+  it('keeps previous history while updating and ignores superseded responses', async () => {
+    const event = { id: 'initial', content: 'Evento preservado', created_at: '2026-10-01T12:00:00Z' };
+    listHistory.mockResolvedValue([event]);
+    const h = await render();
+    const page = h.routeDebugElement!.componentInstance as TaskDetailPage;
+    const pending: ((value: unknown[]) => void)[] = [];
+    listHistory.mockImplementation(() => new Promise(done => pending.push(done)));
+    const first = page.assignmentChanged('Primeira atualização');
+    await h.fixture.whenStable(); h.detectChanges();
+    expect(h.routeNativeElement!.textContent).toContain('Atualizando histórico');
+    expect(h.routeNativeElement!.textContent).toContain('Evento preservado');
+    const second = page.assignmentChanged('Segunda atualização');
+    await h.fixture.whenStable();
+    pending[1]([{ ...event, id: 'latest', content: 'Evento recente' }]);
+    await second;
+    pending[0]([{ ...event, id: 'stale', content: 'Resposta antiga' }]);
+    await first; h.detectChanges();
+    expect(h.routeNativeElement!.textContent).toContain('Evento recente');
+    expect(h.routeNativeElement!.textContent).not.toContain('Resposta antiga');
+    listHistory.mockRejectedValue(new Error('network'));
+    await page.assignmentChanged('Atualização'); h.detectChanges();
+    expect(h.routeNativeElement!.textContent).toContain('Evento recente');
+    expect(h.routeNativeElement!.textContent).toContain('Histórico indisponível');
+  });
+
   it('discards named history when the session changes while loading', async () => {
+    let resolveNames!: (value: unknown[]) => void;
+    listAssignees.mockReturnValue(new Promise(done => { resolveNames = done; }));
     let resolve!: (value: unknown[]) => void;
     listHistory.mockReturnValue(
       new Promise((done) => {
@@ -793,9 +866,11 @@ describe('TaskDetailPage', () => {
     session.set(null);
     harness.detectChanges();
     resolve([{ id: 'old', content: 'Old event', actor_display_name: 'Old person' }]);
+    resolveNames([{ id: task.assignee_id, display_name: 'Old assignee' }]);
     await harness.fixture.whenStable();
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).not.toContain('Old person');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Old assignee');
     expect((harness.routeDebugElement!.componentInstance as TaskDetailPage).history()).toEqual([]);
   });
 });

@@ -262,6 +262,16 @@ describe('BoardsService', () => {
     expect(client.rpc).toHaveBeenLastCalledWith('delete_board', { p_board_id: 'board-1' });
   });
 
+  it.each(['deleteBoard', 'deleteColumn'] as const)('distinguishes deletion failures in %s', async (method) => {
+    const service = TestBed.inject(BoardsService);
+    client.rpc.mockResolvedValue({ error: { code: '23503' } });
+    await expect(service[method]('id')).rejects.toThrow('pendências');
+    client.rpc.mockResolvedValue({ error: { code: '42501' } });
+    await expect(service[method]('id')).rejects.toThrow('permissão');
+    client.rpc.mockRejectedValue(new Error('network internals'));
+    await expect(service[method]('id')).rejects.toThrow('conexão');
+  });
+
   it('preserves false but rejects RPC failures in the strict administrative path', async () => {
     const service = TestBed.inject(BoardsService);
     client.rpc.mockResolvedValue({ data: false, error: null });

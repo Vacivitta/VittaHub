@@ -272,6 +272,7 @@ describe('Boards', () => {
     title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    await fixture.whenStable();
     expect(document.activeElement).toBe(trigger);
   });
 

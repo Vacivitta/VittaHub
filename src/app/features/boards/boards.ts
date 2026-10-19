@@ -1,19 +1,31 @@
+import { FocusRegion, FocusInvalid } from '../../shared/form-focus';
 import { DatePipe } from '@angular/common';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
-import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Icon } from '../../shared/icon';
 import { PageHeading } from '../../shared/page-heading';
 import { BoardCreationContext, BoardSummary, DepartmentOption } from './board-summary';
 import { BoardsService } from './boards.service';
 
 @Component({
-  imports: [PageHeading, RouterLink, Icon, ReactiveFormsModule, DatePipe, CdkTrapFocus],
+  imports: [PageHeading, RouterLink, Icon, ReactiveFormsModule, DatePipe, CdkTrapFocus, FocusRegion, FocusInvalid],
   templateUrl: './boards.html',
   styleUrl: './boards.scss',
 })
 export class Boards implements OnInit {
+  constructor() {
+    const focusList = inject(Router).currentNavigation()?.extras.state?.['focusBoardList'];
+    const element = inject<ElementRef<HTMLElement>>(ElementRef);
+    afterNextRender(() => {
+      if (focusList) {
+        const heading = element.nativeElement.querySelector('h1');
+        heading?.setAttribute('tabindex', '-1');
+        heading?.focus();
+      }
+    });
+  }
   private readonly service = inject(BoardsService);
   private readonly destroyRef = inject(DestroyRef);
   readonly boards = signal<BoardSummary[]>([]);
