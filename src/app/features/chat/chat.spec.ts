@@ -160,6 +160,377 @@ describe('Chat', () => {
     fixture.detectChanges();
   }
 
+  it('groups dates without changing chronological order or message content', async () => {
+    const nextDay = { ...newer, id: 'next-day', created_at: '2026-09-29T12:00:00Z', content: 'Outra data\nSegunda linha' };
+    listMessages.mockResolvedValue([nextDay, newer, older]);
+    const fixture = await render();
+    await openFirst(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(Array.from(root.querySelectorAll('.date-divider time')).map(node => node.textContent))
+      .toEqual(['28/09/2026', '29/09/2026']);
+    expect(Array.from(root.querySelectorAll('.message p')).map(node => node.textContent))
+      .toEqual([older.content, newer.content, nextDay.content]);
+    expect(root.querySelectorAll('.message.own')).toHaveLength(2);
+    expect(root.querySelector('[role="log"]')?.getAttribute('tabindex')).toBe('0');
+    expect(root.querySelectorAll('[role="listitem"]')).toHaveLength(2);
+  });
+
+  it('keeps the conversation header and return action visible while loading and on error', async () => {
+    let fail!: (error: Error) => void;
+    listMessages.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const fixture = await render();
+    const root = fixture.nativeElement as HTMLElement;
+    root.querySelector<HTMLButtonElement>('.conversation')!.click();
+    fixture.detectChanges();
+    expect(root.querySelector('.conversation-header')?.textContent).toContain('Pessoa Teste 2');
+    expect(root.querySelector('.back-to-list')?.getAttribute('aria-label')).toBe('Voltar para conversas');
+    await vi.waitFor(() => expect(listMessages).toHaveBeenCalledOnce());
+    fail(new Error('unavailable'));
+    await vi.waitFor(() => expect(fixture.componentInstance.conversationLoading()).toBe(false));
+    fixture.detectChanges();
+    expect(root.querySelector('.conversation-header')?.textContent).toContain('Pessoa Teste 2');
+    expect(root.querySelector('.conversation-feedback button')?.textContent).toContain('Tentar novamente');
+  });
+
+  it('opens the mobile pane without focusing an input and returns to the selected row without losing draft', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(max-width: 767px)' })));
+    try {
+      const fixture = await render();
+      const root = fixture.nativeElement as HTMLElement;
+      const row = root.querySelector<HTMLButtonElement>('.conversation')!;
+      row.focus();
+      row.click();
+      fixture.detectChanges();
+      expect(document.activeElement).toBe(root.querySelector('.conversation-header h2'));
+      await vi.waitFor(() => expect(fixture.componentInstance.conversationLoading()).toBe(false));
+      fixture.detectChanges();
+      expect(root.querySelector('.chat-layout')?.classList.contains('mobile-conversation-open')).toBe(true);
+      const field = root.querySelector<HTMLTextAreaElement>('#chat-message')!;
+      field.value = 'Rascunho preservado';
+      field.dispatchEvent(new Event('input'));
+      const history = root.querySelector<HTMLElement>('.messages')!;
+      history.scrollTop = 100;
+      root.querySelector<HTMLButtonElement>('.back-to-list')!.click();
+      fixture.detectChanges();
+      expect(root.querySelector('.chat-layout')?.classList.contains('mobile-conversation-open')).toBe(false);
+      expect(document.activeElement).toBe(row);
+      expect(field.value).toBe('Rascunho preservado');
+      expect(history.scrollTop).toBe(100);
+      expect(removeMessageSubscription).not.toHaveBeenCalled();
+      expect(listMessages).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the history element and reading position when a new message arrives', async () => {
+    const fixture = await render();
+    await openFirst(fixture);
+    const history = fixture.nativeElement.querySelector('.messages') as HTMLElement;
+    history.scrollTop = 80;
+    subscriptions[0].onMessage({ ...newer, id: 'another-message', content: 'Atualização' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.messages')).toBe(history);
+    expect(history.scrollTop).toBe(80);
+  });
+
+  it('fits the mobile Chat in the visual viewport when the keyboard opens and cleans up listeners', async () => {
+    const viewport = new EventTarget();
+    let height = 800;
+    Object.defineProperties(viewport, {
+      height: { get: () => height },
+      offsetTop: { value: 0 },
+      scale: { value: 1 },
+    });
+    const remove = vi.spyOn(viewport, 'removeEventListener');
+    vi.stubGlobal('visualViewport', viewport);
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(max-width: 767px)' })));
+    try {
+      const fixture = await render();
+      vi.spyOn(fixture.nativeElement, 'getBoundingClientRect').mockReturnValue({ top: 124 } as DOMRect);
+      height = 450;
+      viewport.dispatchEvent(new Event('resize'));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.style.maxHeight).toBe('326px');
+      height = 800;
+      viewport.dispatchEvent(new Event('resize'));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.style.maxHeight).toBe('676px');
+      fixture.destroy();
+      expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
+      expect(remove).toHaveBeenCalledWith('scroll', expect.any(Function));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('preserves Enter to send and Shift+Enter for a new line', async () => {
+    const fixture = await render();
+    await openFirst(fixture);
+    const field = fixture.nativeElement.querySelector('#chat-message') as HTMLTextAreaElement;
+    field.value = 'Mensagem de teste';
+    field.dispatchEvent(new Event('input'));
+    const newline = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
+    field.dispatchEvent(newline);
+    expect(newline.defaultPrevented).toBe(false);
+    expect(sendMessage).not.toHaveBeenCalled();
+    const submit = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    field.dispatchEvent(submit);
+    expect(submit.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledExactlyOnceWith(first.id, 'Mensagem de teste'));
+  });
+
+  describe('composer focus after mouse selection', () => {
+    let desktop: boolean;
+
+    beforeEach(() => {
+      desktop = true;
+      vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+        matches: desktop && query === '(min-width: 851px) and (hover: hover) and (pointer: fine)',
+      })));
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    function selectWithMouse(fixture: ComponentFixture<Chat>, index = 0, detail = 1, pointerType = 'mouse'): HTMLButtonElement {
+      const button = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.conversation')[index];
+      button.focus();
+      const event = new MouseEvent('click', { bubbles: true, detail, button: 0 });
+      Object.defineProperty(event, 'pointerType', { value: pointerType });
+      button.dispatchEvent(event);
+      fixture.detectChanges();
+      return button;
+    }
+
+    async function settle(fixture: ComponentFixture<Chat>): Promise<void> {
+      await vi.waitFor(() => expect(fixture.componentInstance.conversationLoading()).toBe(false));
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('waits for history and rendering before focusing the ready composer', async () => {
+      let finish!: (messages: ChatMessage[]) => void;
+      listMessages.mockImplementation(() => new Promise<ChatMessage[]>((resolve) => { finish = resolve; }));
+      const fixture = await render();
+      const trigger = selectWithMouse(fixture);
+      await vi.waitFor(() => expect(listMessages).toHaveBeenCalledOnce());
+      expect(document.activeElement).toBe(trigger);
+      expect(fixture.nativeElement.querySelector('#chat-message')).toBeNull();
+      finish([older]);
+      await settle(fixture);
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#chat-message'));
+    });
+
+    it.each([
+      { name: 'keyboard activation', detail: 0, pointer: 'mouse', wide: true },
+      { name: 'touch on a hybrid desktop', detail: 1, pointer: 'touch', wide: true },
+      { name: 'pen input', detail: 1, pointer: 'pen', wide: true },
+      { name: 'mobile layout or coarse pointer', detail: 1, pointer: 'mouse', wide: false },
+    ])('preserves focus for $name', async ({ detail, pointer, wide }) => {
+      desktop = wide;
+      const fixture = await render();
+      const trigger = selectWithMouse(fixture, 0, detail, pointer);
+      await settle(fixture);
+      expect(fixture.nativeElement.querySelector('#chat-message')).not.toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('does not take focus when the user moves to another control while loading', async () => {
+      let finish!: (messages: ChatMessage[]) => void;
+      listMessages.mockImplementation(() => new Promise<ChatMessage[]>((resolve) => { finish = resolve; }));
+      const fixture = await render();
+      selectWithMouse(fixture);
+      await vi.waitFor(() => expect(listMessages).toHaveBeenCalledOnce());
+      const other = fixture.nativeElement.querySelector('#new-chat-trigger') as HTMLButtonElement;
+      other.focus();
+      finish([]);
+      await settle(fixture);
+      expect(document.activeElement).toBe(other);
+    });
+
+    it('does not focus the composer when loading fails', async () => {
+      listMessages.mockRejectedValue(new Error('unavailable'));
+      const fixture = await render();
+      const trigger = selectWithMouse(fixture);
+      await settle(fixture);
+      expect(document.activeElement).toBe(trigger);
+      expect(fixture.nativeElement.querySelector('#chat-message')).toBeNull();
+    });
+
+    it('preserves dialog focus if Nova conversa is opened while history loads', async () => {
+      let finish!: (messages: ChatMessage[]) => void;
+      listMessages.mockImplementation(() => new Promise<ChatMessage[]>((resolve) => { finish = resolve; }));
+      const fixture = await render();
+      selectWithMouse(fixture);
+      await vi.waitFor(() => expect(listMessages).toHaveBeenCalledOnce());
+      const trigger = fixture.nativeElement.querySelector('#new-chat-trigger') as HTMLButtonElement;
+      trigger.focus();
+      trigger.click();
+      fixture.detectChanges();
+      const title = fixture.nativeElement.querySelector('#new-chat-title');
+      expect(document.activeElement).toBe(title);
+      finish([]);
+      await settle(fixture);
+      expect(document.activeElement).toBe(title);
+    });
+
+    it('ignores an older mouse selection after a newer keyboard selection', async () => {
+      let finish!: (messages: ChatMessage[]) => void;
+      listMessages.mockImplementation((id: string) => id === first.id
+        ? new Promise<ChatMessage[]>((resolve) => { finish = resolve; }) : Promise.resolve([]));
+      const fixture = await render();
+      selectWithMouse(fixture);
+      await vi.waitFor(() => expect(listMessages).toHaveBeenCalledWith(first.id));
+      const trigger = selectWithMouse(fixture, 1, 0);
+      await vi.waitFor(() => expect(fixture.componentInstance.conversationLoading()).toBe(false));
+      finish([older]);
+      await settle(fixture);
+      expect(fixture.componentInstance.selected()?.conversation.id).toBe(second.id);
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('preserves draft text and focus across messages, resynchronization and list reloads', async () => {
+      const fixture = await render();
+      selectWithMouse(fixture);
+      await settle(fixture);
+      const field = fixture.nativeElement.querySelector('#chat-message') as HTMLTextAreaElement;
+      field.value = 'Texto ainda em edição';
+      field.dispatchEvent(new Event('input'));
+      const other = fixture.nativeElement.querySelector('#new-chat-trigger') as HTMLButtonElement;
+      other.focus();
+      subscriptions[0].onMessage({ ...older, id: 'new-message', content: 'Nova mensagem' });
+      subscriptions[0].onSubscribed();
+      await fixture.componentInstance.loadConversations();
+      await settle(fixture);
+      expect(fixture.nativeElement.querySelector('#chat-message')).toBe(field);
+      expect(field.value).toBe('Texto ainda em edição');
+      expect(fixture.componentInstance.draft()).toBe('Texto ainda em edição');
+      expect(document.activeElement).toBe(other);
+
+      await fixture.componentInstance.openConversation(fixture.componentInstance.conversations()[0]);
+      await settle(fixture);
+      expect(document.activeElement).toBe(other);
+      expect(fixture.nativeElement.querySelector('#chat-message').value).toBe('Texto ainda em edição');
+    });
+  });
+
+  it.each(['conversation', 'group'] as const)(
+    'contains focus during loading and restores the %s opener on Escape',
+    async (kind) => {
+      profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'gestor' });
+      let finish!: (value: []) => void;
+      listDirectChatCandidates.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+      const fixture = await render();
+      const root = fixture.nativeElement as HTMLElement;
+      const trigger = root.querySelector<HTMLButtonElement>(
+        kind === 'group' ? '#new-group-trigger' : '#new-chat-trigger',
+      )!;
+      trigger.focus();
+      trigger.click();
+      fixture.detectChanges();
+      const dialog = root.querySelector<HTMLElement>('[role="dialog"]')!;
+      const title = dialog.querySelector<HTMLElement>('h2')!;
+      expect(document.activeElement).toBe(title);
+      expect(root.querySelector('.chat-dialog-backdrop')?.getAttribute('tabindex')).toBe('-1');
+
+      // jsdom has no layout or native Tab navigation. Exercise the CDK boundary
+      // sentinels reached by Shift+Tab and Tab with visible control dimensions.
+      for (const element of dialog.querySelectorAll<HTMLElement>('h2, button, input')) {
+        Object.defineProperty(element, 'offsetWidth', { configurable: true, get: () => 100 });
+        Object.defineProperty(element, 'offsetHeight', { configurable: true, get: () => 30 });
+      }
+      const anchors = root.querySelectorAll<HTMLElement>('.cdk-focus-trap-anchor');
+      expect(anchors).toHaveLength(2);
+      anchors[1].focus();
+      expect(document.activeElement).toBe(title);
+      anchors[0].focus();
+      const enabled = dialog.querySelectorAll<HTMLElement>('h2, button:not(:disabled), input:not(:disabled)');
+      expect(document.activeElement).toBe(enabled[enabled.length - 1]);
+
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+      await Promise.resolve();
+      expect(root.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      finish([]);
+      await fixture.whenStable();
+    },
+  );
+
+  it('opens the existing flow from the empty state and restores its action on close', async () => {
+    listMyConversations.mockResolvedValue([]);
+    const fixture = await render();
+    const root = fixture.nativeElement as HTMLElement;
+    const trigger = root.querySelector<HTMLButtonElement>('.conversation-feedback button')!;
+    trigger.focus();
+    trigger.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(listDirectChatCandidates).toHaveBeenCalledOnce();
+    root.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Fechar"]')!.click();
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('uses natural selection labels for zero, one and multiple people', async () => {
+    profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'gestor' });
+    const fixture = await render();
+    await fixture.componentInstance.openNewGroup();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.selected-count').textContent).toContain('Nenhuma pessoa selecionada');
+    fixture.componentInstance.toggleGroupParticipant('user-2');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.selected-count').textContent).toContain('1 pessoa selecionada');
+    fixture.componentInstance.toggleGroupParticipant('user-3');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.selected-count').textContent).toContain('2 pessoas selecionadas');
+  });
+
+  it.each(['conversation', 'group'] as const)(
+    'keeps the %s dialog contained while saving and restores focus after success',
+    async (kind) => {
+      profile.set({ id: 'user-1', display_name: 'Pessoa Atual', role: 'gestor' });
+      const fixture = await render();
+      const root = fixture.nativeElement as HTMLElement;
+      const page = fixture.componentInstance;
+      const trigger = root.querySelector<HTMLButtonElement>(
+        kind === 'group' ? '#new-group-trigger' : '#new-chat-trigger',
+      )!;
+      trigger.focus();
+      trigger.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      let finish!: (id: string) => void;
+      const operation = kind === 'group' ? createGroupConversation : getOrCreateDirectConversation;
+      operation.mockImplementation(() => new Promise<string>((resolve) => { finish = resolve; }));
+      listMyConversations.mockResolvedValue([first, second, group]);
+      page.groupName.set('Equipe de teste');
+      page.toggleGroupParticipant('user-2');
+      const pending = kind === 'group' ? page.createGroup()
+        : page.startConversation({ user_id: 'user-2', display_name: 'Ana Silva' });
+      fixture.detectChanges();
+      const title = root.querySelector<HTMLElement>('[role="dialog"] h2')!;
+      title.focus();
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+      expect(root.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(root.querySelectorAll('[role="dialog"] button:not(:disabled), [role="dialog"] input:not(:disabled)')).toHaveLength(0);
+      Object.defineProperty(title, 'offsetWidth', { configurable: true, get: () => 100 });
+      Object.defineProperty(title, 'offsetHeight', { configurable: true, get: () => 30 });
+      for (const anchor of root.querySelectorAll<HTMLElement>('.cdk-focus-trap-anchor')) {
+        anchor.focus();
+        expect(document.activeElement).toBe(title);
+      }
+      finish(kind === 'group' ? group.id : first.id);
+      await pending;
+      fixture.detectChanges();
+      await Promise.resolve();
+      expect(root.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
+
   it('shows loading and then lists real individual conversations using the other participant name', async () => {
     let resolve!: (value: ChatConversation[]) => void;
     listMyConversations.mockImplementation(

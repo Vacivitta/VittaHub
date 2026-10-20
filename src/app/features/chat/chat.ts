@@ -1,5 +1,6 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
+import { DatePipe, DOCUMENT } from '@angular/common';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { Component, ElementRef, Injector, OnDestroy, afterNextRender, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { AuthService } from '../../core/auth/auth.service';
 import {
@@ -10,6 +11,7 @@ import {
 } from './chat.models';
 import { ChatService } from './chat.service';
 import { Icon } from '../../shared/icon';
+import { FocusRegion } from '../../shared/form-focus';
 
 interface ConversationListItem {
   conversation: ChatConversation;
@@ -19,14 +21,22 @@ interface ConversationListItem {
 }
 
 @Component({
-  imports: [DatePipe, Icon],
-  host: { class: 'chat-page' },
+  imports: [DatePipe, Icon, CdkTrapFocus, FocusRegion],
+  host: { class: 'chat-page', '[style.max-height.px]': 'mobileViewportHeight()' },
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
 export class Chat implements OnDestroy {
   private readonly service = inject(ChatService);
   private readonly auth = inject(AuthService);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
+  private readonly composer = viewChild<ElementRef<HTMLTextAreaElement>>('composer');
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly conversationHeading = viewChild<ElementRef<HTMLElement>>('conversationHeading');
+  readonly mobileConversationOpen = signal(false);
+  readonly mobileViewportHeight = signal<number | null>(null);
+  private releaseViewport?: () => void;
   private activeChannel: RealtimeChannel | null = null;
   private conversationRevision = 0;
   private destroyed = false;
@@ -60,6 +70,11 @@ export class Chat implements OnDestroy {
   readonly groupCandidatesLoading = signal(false);
   readonly groupError = signal('');
   readonly creatingGroup = signal(false);
+  readonly selectedGroupLabel = computed(() => {
+    const count = this.selectedGroupParticipantIds().size;
+    return count === 0 ? 'Nenhuma pessoa selecionada'
+      : count === 1 ? '1 pessoa selecionada' : `${count} pessoas selecionadas`;
+  });
   readonly canSubmitGroup = computed(
     () =>
       !!this.groupName().trim() &&
@@ -80,6 +95,23 @@ export class Chat implements OnDestroy {
   });
 
   constructor() {
+    afterNextRender(() => {
+      const viewport = this.document.defaultView?.visualViewport;
+      if (!viewport) return;
+      const resize = () => {
+        const mobile = this.document.defaultView?.matchMedia?.('(max-width: 767px)').matches;
+        const top = this.element.nativeElement.getBoundingClientRect().top;
+        this.mobileViewportHeight.set(mobile && viewport.scale === 1
+          ? Math.max(0, viewport.height - Math.max(0, top - viewport.offsetTop)) : null);
+      };
+      viewport.addEventListener('resize', resize);
+      viewport.addEventListener('scroll', resize);
+      resize();
+      this.releaseViewport = () => {
+        viewport.removeEventListener('resize', resize);
+        viewport.removeEventListener('scroll', resize);
+      };
+    });
     const initialUser = this.auth.session()?.user.id;
     effect(() => {
       if (this.auth.session()?.user.id !== initialUser || !this.auth.session()) {
@@ -98,6 +130,7 @@ export class Chat implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.releaseViewport?.();
     this.destroyed = true;
     this.conversationRevision++;
     const channel = this.activeChannel;
@@ -245,13 +278,29 @@ export class Chat implements OnDestroy {
   }
 
   conversationKindLabel(item: ConversationListItem): string {
+    const count = this.conversationLoading() || this.conversationError()
+      ? item.participantCount : this.participants().length;
     return item.conversation.kind === 'grupo'
-      ? `Grupo • ${this.participants().length} participantes`
+      ? `Grupo • ${count} ${count === 1 ? 'participante' : 'participantes'}`
       : 'Conversa individual';
   }
 
-  async openConversation(item: ConversationListItem): Promise<void> {
+  async openConversation(item: ConversationListItem, event?: MouseEvent): Promise<void> {
+    const enteringMobileConversation = !this.mobileConversationOpen();
+    this.mobileConversationOpen.set(true);
+    const focusComposer = !!event && event.detail > 0 && event.button === 0 &&
+      (!('pointerType' in event) || event.pointerType === 'mouse') &&
+      this.hasDesktopPointer();
+    const focusOrigin = this.document.activeElement;
     const revision = ++this.conversationRevision;
+    if (enteringMobileConversation && this.document.defaultView?.matchMedia?.('(max-width: 767px)').matches) {
+      afterNextRender(() => {
+        if (!this.destroyed && revision === this.conversationRevision &&
+          this.mobileConversationOpen() && !this.newConversationOpen() && !this.newGroupOpen()) {
+          this.conversationHeading()?.nativeElement.focus({ preventScroll: true });
+        }
+      }, { injector: this.injector });
+    }
     this.selected.set(item);
     this.participants.set([]);
     this.messages.set([]);
@@ -282,8 +331,45 @@ export class Chat implements OnDestroy {
     } finally {
       if (!this.destroyed && revision === this.conversationRevision) {
         this.conversationLoading.set(false);
+        if (focusComposer) {
+          afterNextRender(() => {
+            const field = this.composer()?.nativeElement;
+            const active = this.document.activeElement;
+            const focusUnchanged = active === focusOrigin ||
+              (active === this.document.body && !!focusOrigin && !focusOrigin.isConnected);
+            if (
+              !this.destroyed && revision === this.conversationRevision &&
+              !this.conversationLoading() && !this.conversationError() &&
+              !this.newConversationOpen() && !this.newGroupOpen() &&
+              this.hasDesktopPointer() && focusUnchanged && field && !field.disabled
+            ) {
+              field.focus({ preventScroll: true });
+            }
+          }, { injector: this.injector });
+        }
       }
     }
+  }
+
+  private hasDesktopPointer(): boolean {
+    return this.document.defaultView?.matchMedia?.(
+      '(min-width: 851px) and (hover: hover) and (pointer: fine)',
+    ).matches ?? false;
+  }
+
+  backToConversations(): void {
+    this.mobileConversationOpen.set(false);
+    afterNextRender(() => {
+      const root = this.element.nativeElement;
+      (root.querySelector<HTMLElement>('.conversation.selected') ??
+        root.querySelector<HTMLElement>('#new-chat-trigger'))?.focus({ preventScroll: true });
+    }, { injector: this.injector });
+  }
+
+  startsNewDay(index: number): boolean {
+    const messages = this.messages();
+    return index === 0 || new Date(messages[index].created_at).toDateString() !==
+      new Date(messages[index - 1].created_at).toDateString();
   }
 
   async send(): Promise<void> {

@@ -176,6 +176,17 @@ main {
 }
 main:has(.chat-page) { padding: 0; }
 .workspace:has(.chat-page) .workspace-footer { display: none; }
+// The Chat owns its scroll regions; let it use the space below the real header.
+:host:has(.chat-page) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+:host:has(.chat-page) > .sidebar { flex-shrink: 0; }
+.workspace:has(.chat-page) { flex: 1; min-height: 0; }
+.workspace:has(.chat-page) .topbar { flex-shrink: 0; }
+main:has(.chat-page) { display: flex; flex-direction: column; min-height: 0; }
 @media (min-width: 721px) {
   :host { --sidebar-expanded-width: 264px; }
   .sidebar {

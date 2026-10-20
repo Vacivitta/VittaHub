@@ -4,12 +4,14 @@
     class="chat-dialog-backdrop"
     type="button"
     aria-label="Fechar nova conversa"
+    tabindex="-1"
     (click)="closeNewConversation()"
   ></button>
-  <section class="new-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
+  <section class="new-chat-dialog" cdkTrapFocus appFocusRegion="#new-chat-trigger"
+    (keydown.escape)="closeNewConversation()" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
     <header>
       <div>
-        <h2 id="new-chat-title">Nova conversa</h2>
+        <h2 id="new-chat-title" data-focus-initial tabindex="0">Nova conversa</h2>
         <p class="muted">Escolha uma pessoa para iniciar ou abrir a conversa individual.</p>
       </div>
       <button
@@ -70,17 +72,21 @@
     class="chat-dialog-backdrop"
     type="button"
     aria-label="Fechar novo grupo"
+    tabindex="-1"
     (click)="closeNewGroup()"
   ></button>
   <section
     class="new-chat-dialog new-group-dialog"
+    cdkTrapFocus
+    appFocusRegion="#new-group-trigger"
+    (keydown.escape)="closeNewGroup()"
     role="dialog"
     aria-modal="true"
     aria-labelledby="new-group-title"
   >
     <header>
       <div>
-        <h2 id="new-group-title">Novo grupo</h2>
+        <h2 id="new-group-title" data-focus-initial tabindex="0">Novo grupo</h2>
         <p class="muted">Dê um nome ao grupo e escolha pelo menos uma pessoa.</p>
       </div>
       <button
@@ -113,8 +119,8 @@
         [disabled]="groupCandidatesLoading() || creatingGroup()"
       />
     </label>
-    <p class="selected-count small muted">
-      {{ selectedGroupParticipantIds().size }} selecionada(s)
+    <p class="selected-count small muted" aria-live="polite">
+      {{ selectedGroupLabel() }}
     </p>
     @if (groupCandidatesLoading()) {
       <p class="note" role="status">Carregando pessoas…</p>
@@ -171,21 +177,20 @@
     </footer>
   </section>
 }
-<div class="chat-layout">
+<div class="chat-layout" [class.mobile-conversation-open]="mobileConversationOpen()">
   <aside class="conversation-list" aria-label="Conversas">
     <div class="list-heading">
       <div>
-        <span class="eyebrow">MENSAGENS</span>
         <h2>Conversas</h2>
       </div>
       <app-icon name="chat" />
     </div>
     <div class="chat-actions">
-      <button class="button tertiary" type="button" (click)="openNewConversation()">
+      <button id="new-chat-trigger" class="button primary" type="button" (click)="openNewConversation()">
         <app-icon name="plus" /> Nova conversa
       </button>
       @if (canCreateGroup()) {
-        <button class="button tertiary" type="button" (click)="openNewGroup()">
+        <button id="new-group-trigger" class="button secondary" type="button" (click)="openNewGroup()">
           <app-icon name="users" /> Novo grupo
         </button>
       }
@@ -198,14 +203,15 @@
         <button type="button" (click)="loadConversations()">Tentar novamente</button>
       </div>
     } @else {
-      <div class="conversation-buttons">
+      <div class="conversation-buttons" role="list" aria-label="Suas conversas">
         @for (item of conversations(); track item.conversation.id) {
+          <div role="listitem">
           <button
             type="button"
             class="conversation"
             [class.selected]="selected()?.conversation?.id === item.conversation.id"
             [attr.aria-pressed]="selected()?.conversation?.id === item.conversation.id"
-            (click)="openConversation(item)"
+            (click)="openConversation(item, $event)"
           >
             <span class="avatar" [class.group-avatar]="item.conversation.kind === 'grupo'" aria-hidden="true">
               @if (item.conversation.kind === 'grupo') {
@@ -223,7 +229,7 @@
               </span>
               <small class="conversation-meta">
                 @if (item.conversation.kind === 'grupo') {
-                  <span>{{ item.participantCount }} participantes</span>
+                  <span>{{ item.participantCount }} {{ item.participantCount === 1 ? 'participante' : 'participantes' }}</span>
                 } @else {
                   <span>Conversa individual</span>
                 }
@@ -231,14 +237,32 @@
               </small>
             </span>
           </button>
+          </div>
         } @empty {
-          <p class="note" role="status">Nenhuma conversa disponível.</p>
+          <p class="note" role="status">Nenhuma conversa disponível. Use Nova conversa para começar.</p>
         }
       </div>
     }
   </aside>
 
   <section class="message-panel" aria-label="Conversa selecionada">
+    @if (selected()) {
+      <header class="conversation-header">
+        <button class="back-to-list icon-button" type="button" aria-label="Voltar para conversas"
+          (click)="backToConversations()"><app-icon name="arrow-left" /></button>
+        <span class="avatar" [class.group-avatar]="selected()!.conversation.kind === 'grupo'" aria-hidden="true">
+          @if (selected()!.conversation.kind === 'grupo') {
+            <app-icon name="users" />
+          } @else {
+            {{ selected()!.initials }}
+          }
+        </span>
+        <div>
+          <h2 #conversationHeading tabindex="-1">{{ selected()!.name }}</h2>
+          <p class="small muted">{{ conversationKindLabel(selected()!) }}</p>
+        </div>
+      </header>
+    }
     @if (!selected()) {
       <div class="conversation-feedback" role="status">
         <app-icon name="chat" />
@@ -249,7 +273,10 @@
           <p>Use “Tentar novamente” na lista de conversas para carregar suas conversas.</p>
         } @else if (conversations().length === 0) {
           <h2>Nenhuma conversa disponível</h2>
-          <p>Use “Nova conversa” para escolher uma pessoa e iniciar uma conversa individual.</p>
+          <p>Escolha uma pessoa para iniciar uma conversa individual.</p>
+          <button class="button primary" type="button" (click)="openNewConversation()">
+            <app-icon name="plus" /> Nova conversa
+          </button>
           @if (canCreateGroup()) {
             <p>Você também pode usar “Novo grupo” para conversar com várias pessoas.</p>
           }
@@ -267,21 +294,11 @@
         <button type="button" (click)="openConversation(selected()!)">Tentar novamente</button>
       </div>
     } @else {
-      <header class="conversation-header">
-        <span class="avatar" [class.group-avatar]="selected()!.conversation.kind === 'grupo'" aria-hidden="true">
-          @if (selected()!.conversation.kind === 'grupo') {
-            <app-icon name="users" />
-          } @else {
-            {{ selected()!.initials }}
-          }
-        </span>
-        <div>
-          <h2>{{ selected()!.name }}</h2>
-          <p class="small muted">{{ conversationKindLabel(selected()!) }}</p>
-        </div>
-      </header>
-      <div class="messages" aria-live="polite" aria-label="Histórico de mensagens">
+      <div class="messages" role="log" tabindex="0" aria-live="polite" aria-label="Histórico de mensagens">
         @for (message of messages(); track message.id) {
+          @if (startsNewDay($index)) {
+            <div class="date-divider"><time [attr.datetime]="message.created_at">{{ message.created_at | date: 'dd/MM/yyyy' }}</time></div>
+          }
           <article class="message" [class.own]="isOwn(message)">
             <span class="avatar" aria-hidden="true">{{ authorInitials(message) }}</span>
             <div class="message-body">
@@ -299,12 +316,15 @@
         }
       </div>
       <div class="composer">
-        <label for="chat-message">Mensagem</label>
+        <label for="chat-message" class="sr-only">Mensagem</label>
         <div class="row">
           <textarea
+            #composer
             id="chat-message"
             rows="2"
-            placeholder="Escreva uma mensagem"
+            placeholder="Escreva uma mensagem…"
+            aria-describedby="composer-help"
+            [attr.aria-invalid]="sendError() ? 'true' : null"
             [value]="draft()"
             [disabled]="sending()"
             (input)="draft.set($any($event.target).value); sendError.set('')"
@@ -322,7 +342,7 @@
         @if (sendError()) {
           <p class="form-error" role="alert">{{ sendError() }}</p>
         }
-        <p class="small muted">Enter envia. Shift+Enter adiciona uma nova linha.</p>
+        <p id="composer-help" class="small muted">Enter envia. Shift+Enter adiciona uma nova linha.</p>
       </div>
     }
   </section>
